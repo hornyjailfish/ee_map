@@ -3,6 +3,16 @@ DEFINE INDEX unique_electric_room_name
     COLUMNS name
     UNIQUE;
 
+DEFINE INDEX unique_areas
+    ON TABLE rent
+    COLUMNS name, geometry
+    UNIQUE;
+
+DEFINE INDEX unique_shops
+    ON TABLE shops
+    COLUMNS area
+    UNIQUE;
+
 DEFINE INDEX unique_boards_per_room
     ON boards FIELDS name, room
     UNIQUE;

@@ -5,8 +5,8 @@ DEFINE FIELD ord ON levels TYPE int DEFAULT 1;
 # only rentable areas
 DEFINE TABLE rents SCHEMAFULL;
 DEFINE FIELD name ON rents TYPE string;
-DEFINE FIELD level ON rents TYPE record<levels>;
-DEFINE FIELD geometry ON rents TYPE geometry<polygon>;
+DEFINE FIELD level ON rents TYPE record<levels> | none;
+DEFINE FIELD geometry ON rents TYPE geometry<polygon> | none;
 
 # actual brand names that rent this areas
 DEFINE TABLE shops SCHEMAFULL;

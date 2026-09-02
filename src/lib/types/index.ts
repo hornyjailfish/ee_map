@@ -59,8 +59,8 @@ export interface Levels {
 
 export interface Rents {
 	id: RecordId<'rents'>;
-	geometry: GeometryPolygon;
-	level: RecordId<'levels'>;
+	geometry?: GeometryPolygon;
+	level?: RecordId<'levels'>;
 	name: string;
 }
 

@@ -4,7 +4,7 @@
 #
  [variables]
  schema_prefix = "map"
- bucket_path = "'file:C:/Users/5q/gits/map/data/bucket'"
+ bucket_path = "'file:C:/Users/User/gits/ee_map/data/bucket'"
  environment   = "development"
 
 # Generate TypeScript types from your schema (surrealdb JS SDK v2).
