@@ -1,0 +1,973 @@
+{
+  "version": 1,
+  "generatedAt": "2026-09-02T05:03:07.3515317Z",
+  "namespace": "main",
+  "database": "main",
+  "tables": [
+    {
+      "name": "__entity",
+      "define": "DEFINE TABLE __entity TYPE NORMAL SCHEMAFULL PERMISSIONS NONE",
+      "schemafull": true,
+      "kind": "NORMAL",
+      "fields": [
+        {
+          "name": "key",
+          "define": "DEFINE FIELD key ON __entity TYPE string PERMISSIONS FULL",
+          "type": {
+            "kind": "primitive",
+            "name": "string"
+          },
+          "optional": false,
+          "flexible": false,
+          "readonly": false,
+          "hasDefault": false,
+          "rawType": "string"
+        },
+        {
+          "name": "ns",
+          "define": "DEFINE FIELD ns ON __entity TYPE string PERMISSIONS FULL",
+          "type": {
+            "kind": "primitive",
+            "name": "string"
+          },
+          "optional": false,
+          "flexible": false,
+          "readonly": false,
+          "hasDefault": false,
+          "rawType": "string"
+        },
+        {
+          "name": "updated_at",
+          "define": "DEFINE FIELD updated_at ON __entity TYPE datetime DEFAULT time::now() PERMISSIONS FULL",
+          "type": {
+            "kind": "primitive",
+            "name": "datetime"
+          },
+          "optional": false,
+          "flexible": false,
+          "readonly": false,
+          "hasDefault": true,
+          "rawType": "datetime"
+        },
+        {
+          "name": "val",
+          "define": "DEFINE FIELD val ON __entity TYPE any PERMISSIONS FULL",
+          "type": {
+            "kind": "primitive",
+            "name": "any"
+          },
+          "optional": false,
+          "flexible": false,
+          "readonly": false,
+          "hasDefault": false,
+          "rawType": "any"
+        }
+      ],
+      "events": [],
+      "indexes": [
+        {
+          "name": "by_ns_key",
+          "define": "DEFINE INDEX by_ns_key ON __entity FIELDS ns, key UNIQUE"
+        }
+      ]
+    },
+    {
+      "name": "__rollout",
+      "define": "DEFINE TABLE __rollout TYPE NORMAL SCHEMAFULL PERMISSIONS NONE",
+      "schemafull": true,
+      "kind": "NORMAL",
+      "fields": [
+        {
+          "name": "completed_at",
+          "define": "DEFINE FIELD completed_at ON __rollout TYPE none | datetime PERMISSIONS FULL",
+          "type": {
+            "kind": "primitive",
+            "name": "datetime"
+          },
+          "optional": true,
+          "flexible": false,
+          "readonly": false,
+          "hasDefault": false,
+          "rawType": "none | datetime"
+        },
+        {
+          "name": "id",
+          "define": "DEFINE FIELD id ON __rollout TYPE string PERMISSIONS FULL",
+          "type": {
+            "kind": "primitive",
+            "name": "string"
+          },
+          "optional": false,
+          "flexible": false,
+          "readonly": false,
+          "hasDefault": false,
+          "rawType": "string"
+        },
+        {
+          "name": "last_error",
+          "define": "DEFINE FIELD last_error ON __rollout TYPE none | string PERMISSIONS FULL",
+          "type": {
+            "kind": "primitive",
+            "name": "string"
+          },
+          "optional": true,
+          "flexible": false,
+          "readonly": false,
+          "hasDefault": false,
+          "rawType": "none | string"
+        },
+        {
+          "name": "manifest_checksum",
+          "define": "DEFINE FIELD manifest_checksum ON __rollout TYPE string PERMISSIONS FULL",
+          "type": {
+            "kind": "primitive",
+            "name": "string"
+          },
+          "optional": false,
+          "flexible": false,
+          "readonly": false,
+          "hasDefault": false,
+          "rawType": "string"
+        },
+        {
+          "name": "manifest_path",
+          "define": "DEFINE FIELD manifest_path ON __rollout TYPE string PERMISSIONS FULL",
+          "type": {
+            "kind": "primitive",
+            "name": "string"
+          },
+          "optional": false,
+          "flexible": false,
+          "readonly": false,
+          "hasDefault": false,
+          "rawType": "string"
+        },
+        {
+          "name": "name",
+          "define": "DEFINE FIELD name ON __rollout TYPE string PERMISSIONS FULL",
+          "type": {
+            "kind": "primitive",
+            "name": "string"
+          },
+          "optional": false,
+          "flexible": false,
+          "readonly": false,
+          "hasDefault": false,
+          "rawType": "string"
+        },
+        {
+          "name": "source_entities",
+          "define": "DEFINE FIELD source_entities ON __rollout TYPE any PERMISSIONS FULL",
+          "type": {
+            "kind": "primitive",
+            "name": "any"
+          },
+          "optional": false,
+          "flexible": false,
+          "readonly": false,
+          "hasDefault": false,
+          "rawType": "any"
+        },
+        {
+          "name": "source_schema_hash",
+          "define": "DEFINE FIELD source_schema_hash ON __rollout TYPE string PERMISSIONS FULL",
+          "type": {
+            "kind": "primitive",
+            "name": "string"
+          },
+          "optional": false,
+          "flexible": false,
+          "readonly": false,
+          "hasDefault": false,
+          "rawType": "string"
+        },
+        {
+          "name": "started_at",
+          "define": "DEFINE FIELD started_at ON __rollout TYPE datetime DEFAULT time::now() PERMISSIONS FULL",
+          "type": {
+            "kind": "primitive",
+            "name": "datetime"
+          },
+          "optional": false,
+          "flexible": false,
+          "readonly": false,
+          "hasDefault": true,
+          "rawType": "datetime"
+        },
+        {
+          "name": "status",
+          "define": "DEFINE FIELD status ON __rollout TYPE string PERMISSIONS FULL",
+          "type": {
+            "kind": "primitive",
+            "name": "string"
+          },
+          "optional": false,
+          "flexible": false,
+          "readonly": false,
+          "hasDefault": false,
+          "rawType": "string"
+        },
+        {
+          "name": "steps",
+          "define": "DEFINE FIELD steps ON __rollout TYPE any DEFAULT [] PERMISSIONS FULL",
+          "type": {
+            "kind": "primitive",
+            "name": "any"
+          },
+          "optional": false,
+          "flexible": false,
+          "readonly": false,
+          "hasDefault": true,
+          "rawType": "any"
+        },
+        {
+          "name": "target_entities",
+          "define": "DEFINE FIELD target_entities ON __rollout TYPE any PERMISSIONS FULL",
+          "type": {
+            "kind": "primitive",
+            "name": "any"
+          },
+          "optional": false,
+          "flexible": false,
+          "readonly": false,
+          "hasDefault": false,
+          "rawType": "any"
+        },
+        {
+          "name": "target_schema_hash",
+          "define": "DEFINE FIELD target_schema_hash ON __rollout TYPE string PERMISSIONS FULL",
+          "type": {
+            "kind": "primitive",
+            "name": "string"
+          },
+          "optional": false,
+          "flexible": false,
+          "readonly": false,
+          "hasDefault": false,
+          "rawType": "string"
+        },
+        {
+          "name": "updated_at",
+          "define": "DEFINE FIELD updated_at ON __rollout TYPE datetime DEFAULT time::now() PERMISSIONS FULL",
+          "type": {
+            "kind": "primitive",
+            "name": "datetime"
+          },
+          "optional": false,
+          "flexible": false,
+          "readonly": false,
+          "hasDefault": true,
+          "rawType": "datetime"
+        }
+      ],
+      "events": [],
+      "indexes": [
+        {
+          "name": "by_rollout_id",
+          "define": "DEFINE INDEX by_rollout_id ON __rollout FIELDS id UNIQUE"
+        }
+      ]
+    },
+    {
+      "name": "app_config",
+      "define": "DEFINE TABLE app_config TYPE NORMAL SCHEMALESS PERMISSIONS NONE",
+      "schemafull": false,
+      "kind": "NORMAL",
+      "fields": [
+        {
+          "name": "edges",
+          "define": "DEFINE FIELD edges ON app_config TYPE object | none PERMISSIONS FULL",
+          "type": {
+            "kind": "primitive",
+            "name": "object"
+          },
+          "optional": true,
+          "flexible": false,
+          "readonly": false,
+          "hasDefault": false,
+          "rawType": "object | none"
+        },
+        {
+          "name": "entities",
+          "define": "DEFINE FIELD entities ON app_config TYPE object | none PERMISSIONS FULL",
+          "type": {
+            "kind": "primitive",
+            "name": "object"
+          },
+          "optional": true,
+          "flexible": false,
+          "readonly": false,
+          "hasDefault": false,
+          "rawType": "object | none"
+        },
+        {
+          "name": "excludeTables",
+          "define": "DEFINE FIELD excludeTables ON app_config TYPE array<string> | none PERMISSIONS FULL",
+          "type": {
+            "kind": "array",
+            "inner": {
+              "kind": "primitive",
+              "name": "string"
+            },
+            "max": null
+          },
+          "optional": true,
+          "flexible": false,
+          "readonly": false,
+          "hasDefault": false,
+          "rawType": "array<string> | none"
+        },
+        {
+          "name": "excludeTables.*",
+          "define": "DEFINE FIELD excludeTables.* ON app_config TYPE string PERMISSIONS FULL",
+          "type": {
+            "kind": "primitive",
+            "name": "string"
+          },
+          "optional": false,
+          "flexible": false,
+          "readonly": false,
+          "hasDefault": false,
+          "rawType": "string"
+        },
+        {
+          "name": "graph",
+          "define": "DEFINE FIELD graph ON app_config TYPE object | none PERMISSIONS FULL",
+          "type": {
+            "kind": "primitive",
+            "name": "object"
+          },
+          "optional": true,
+          "flexible": false,
+          "readonly": false,
+          "hasDefault": false,
+          "rawType": "object | none"
+        },
+        {
+          "name": "map",
+          "define": "DEFINE FIELD map ON app_config TYPE object | none PERMISSIONS FULL",
+          "type": {
+            "kind": "primitive",
+            "name": "object"
+          },
+          "optional": true,
+          "flexible": false,
+          "readonly": false,
+          "hasDefault": false,
+          "rawType": "object | none"
+        },
+        {
+          "name": "search",
+          "define": "DEFINE FIELD search ON app_config TYPE object | none PERMISSIONS FULL",
+          "type": {
+            "kind": "primitive",
+            "name": "object"
+          },
+          "optional": true,
+          "flexible": false,
+          "readonly": false,
+          "hasDefault": false,
+          "rawType": "object | none"
+        },
+        {
+          "name": "version",
+          "define": "DEFINE FIELD version ON app_config TYPE int DEFAULT 1 PERMISSIONS FULL",
+          "type": {
+            "kind": "primitive",
+            "name": "int"
+          },
+          "optional": false,
+          "flexible": false,
+          "readonly": false,
+          "hasDefault": true,
+          "rawType": "int"
+        }
+      ],
+      "events": [],
+      "indexes": []
+    },
+    {
+      "name": "boards",
+      "define": "DEFINE TABLE boards TYPE NORMAL SCHEMAFULL PERMISSIONS NONE",
+      "schemafull": true,
+      "kind": "NORMAL",
+      "fields": [
+        {
+          "name": "name",
+          "define": "DEFINE FIELD name ON boards TYPE string PERMISSIONS FULL",
+          "type": {
+            "kind": "primitive",
+            "name": "string"
+          },
+          "optional": false,
+          "flexible": false,
+          "readonly": false,
+          "hasDefault": false,
+          "rawType": "string"
+        },
+        {
+          "name": "room",
+          "define": "DEFINE FIELD room ON boards TYPE record<electric_rooms> PERMISSIONS FULL",
+          "type": {
+            "kind": "record",
+            "tables": [
+              "electric_rooms"
+            ]
+          },
+          "optional": false,
+          "flexible": false,
+          "readonly": false,
+          "hasDefault": false,
+          "rawType": "record<electric_rooms>"
+        }
+      ],
+      "events": [],
+      "indexes": [
+        {
+          "name": "unique_boards_per_room",
+          "define": "DEFINE INDEX unique_boards_per_room ON boards FIELDS name, room UNIQUE"
+        }
+      ]
+    },
+    {
+      "name": "breakers",
+      "define": "DEFINE TABLE breakers TYPE NORMAL SCHEMAFULL PERMISSIONS NONE",
+      "schemafull": true,
+      "kind": "NORMAL",
+      "fields": [
+        {
+          "name": "board",
+          "define": "DEFINE FIELD board ON breakers TYPE record<boards> PERMISSIONS FULL",
+          "type": {
+            "kind": "record",
+            "tables": [
+              "boards"
+            ]
+          },
+          "optional": false,
+          "flexible": false,
+          "readonly": false,
+          "hasDefault": false,
+          "rawType": "record<boards>"
+        },
+        {
+          "name": "description",
+          "define": "DEFINE FIELD description ON breakers TYPE string | none PERMISSIONS FULL",
+          "type": {
+            "kind": "primitive",
+            "name": "string"
+          },
+          "optional": true,
+          "flexible": false,
+          "readonly": false,
+          "hasDefault": false,
+          "rawType": "string | none"
+        },
+        {
+          "name": "name",
+          "define": "DEFINE FIELD name ON breakers TYPE string ASSERT $value = <regex> /^Q[0-9]+$/ PERMISSIONS FULL",
+          "type": {
+            "kind": "primitive",
+            "name": "string"
+          },
+          "optional": false,
+          "flexible": false,
+          "readonly": false,
+          "hasDefault": false,
+          "rawType": "string"
+        },
+        {
+          "name": "value",
+          "define": "DEFINE FIELD `value` ON breakers TYPE number | none PERMISSIONS FULL",
+          "type": {
+            "kind": "primitive",
+            "name": "number"
+          },
+          "optional": true,
+          "flexible": false,
+          "readonly": false,
+          "hasDefault": false,
+          "rawType": "number | none"
+        }
+      ],
+      "events": [],
+      "indexes": [
+        {
+          "name": "unique_breakers",
+          "define": "DEFINE INDEX unique_breakers ON breakers FIELDS name, board UNIQUE"
+        }
+      ]
+    },
+    {
+      "name": "connects",
+      "define": "DEFINE TABLE connects TYPE RELATION IN breakers OUT breakers | rents SCHEMALESS PERMISSIONS NONE",
+      "schemafull": false,
+      "kind": "RELATION",
+      "fields": [
+        {
+          "name": "cable",
+          "define": "DEFINE FIELD cable ON connects TYPE string | none PERMISSIONS FULL",
+          "type": {
+            "kind": "primitive",
+            "name": "string"
+          },
+          "optional": true,
+          "flexible": false,
+          "readonly": false,
+          "hasDefault": false,
+          "rawType": "string | none"
+        },
+        {
+          "name": "in",
+          "define": "DEFINE FIELD in ON connects TYPE record<breakers> PERMISSIONS FULL",
+          "type": {
+            "kind": "record",
+            "tables": [
+              "breakers"
+            ]
+          },
+          "optional": false,
+          "flexible": false,
+          "readonly": false,
+          "hasDefault": false,
+          "rawType": "record<breakers>"
+        },
+        {
+          "name": "out",
+          "define": "DEFINE FIELD out ON connects TYPE record<breakers | rents> PERMISSIONS FULL",
+          "type": {
+            "kind": "record",
+            "tables": [
+              "breakers",
+              "rents"
+            ]
+          },
+          "optional": false,
+          "flexible": false,
+          "readonly": false,
+          "hasDefault": false,
+          "rawType": "record<breakers | rents>"
+        }
+      ],
+      "events": [],
+      "indexes": [
+        {
+          "name": "one_edge",
+          "define": "DEFINE INDEX one_edge ON connects FIELDS in, out UNIQUE"
+        }
+      ]
+    },
+    {
+      "name": "electric_rooms",
+      "define": "DEFINE TABLE electric_rooms TYPE NORMAL SCHEMAFULL PERMISSIONS NONE",
+      "schemafull": true,
+      "kind": "NORMAL",
+      "fields": [
+        {
+          "name": "geometry",
+          "define": "DEFINE FIELD geometry ON electric_rooms TYPE geometry<polygon> | none PERMISSIONS FULL",
+          "type": {
+            "kind": "geometry",
+            "kinds": [
+              "polygon"
+            ]
+          },
+          "optional": true,
+          "flexible": false,
+          "readonly": false,
+          "hasDefault": false,
+          "rawType": "geometry<polygon> | none"
+        },
+        {
+          "name": "level",
+          "define": "DEFINE FIELD level ON electric_rooms TYPE record<levels> PERMISSIONS FULL",
+          "type": {
+            "kind": "record",
+            "tables": [
+              "levels"
+            ]
+          },
+          "optional": false,
+          "flexible": false,
+          "readonly": false,
+          "hasDefault": false,
+          "rawType": "record<levels>"
+        },
+        {
+          "name": "name",
+          "define": "DEFINE FIELD name ON electric_rooms TYPE string PERMISSIONS FULL",
+          "type": {
+            "kind": "primitive",
+            "name": "string"
+          },
+          "optional": false,
+          "flexible": false,
+          "readonly": false,
+          "hasDefault": false,
+          "rawType": "string"
+        }
+      ],
+      "events": [],
+      "indexes": [
+        {
+          "name": "unique_electric_room_name",
+          "define": "DEFINE INDEX unique_electric_room_name ON electric_rooms FIELDS name UNIQUE"
+        }
+      ]
+    },
+    {
+      "name": "embeddings",
+      "define": "DEFINE TABLE embeddings TYPE NORMAL SCHEMAFULL PERMISSIONS NONE",
+      "schemafull": true,
+      "kind": "NORMAL",
+      "fields": [
+        {
+          "name": "description",
+          "define": "DEFINE FIELD description ON embeddings TYPE string | none PERMISSIONS FULL",
+          "type": {
+            "kind": "primitive",
+            "name": "string"
+          },
+          "optional": true,
+          "flexible": false,
+          "readonly": false,
+          "hasDefault": false,
+          "rawType": "string | none"
+        },
+        {
+          "name": "image",
+          "define": "DEFINE FIELD image ON embeddings TYPE string | none ASSERT $value = NONE OR <regex> '^f\"images:/.*\"$' = $value PERMISSIONS FULL",
+          "type": {
+            "kind": "primitive",
+            "name": "string"
+          },
+          "optional": true,
+          "flexible": false,
+          "readonly": false,
+          "hasDefault": false,
+          "rawType": "string | none"
+        },
+        {
+          "name": "image_embedding",
+          "define": "DEFINE FIELD image_embedding ON embeddings TYPE array<float> | none PERMISSIONS FULL",
+          "type": {
+            "kind": "array",
+            "inner": {
+              "kind": "primitive",
+              "name": "float"
+            },
+            "max": null
+          },
+          "optional": true,
+          "flexible": false,
+          "readonly": false,
+          "hasDefault": false,
+          "rawType": "array<float> | none"
+        },
+        {
+          "name": "image_embedding.*",
+          "define": "DEFINE FIELD image_embedding.* ON embeddings TYPE float PERMISSIONS FULL",
+          "type": {
+            "kind": "primitive",
+            "name": "float"
+          },
+          "optional": false,
+          "flexible": false,
+          "readonly": false,
+          "hasDefault": false,
+          "rawType": "float"
+        },
+        {
+          "name": "marker",
+          "define": "DEFINE FIELD marker ON embeddings TYPE geometry<point> PERMISSIONS FULL",
+          "type": {
+            "kind": "geometry",
+            "kinds": [
+              "point"
+            ]
+          },
+          "optional": false,
+          "flexible": false,
+          "readonly": false,
+          "hasDefault": false,
+          "rawType": "geometry<point>"
+        },
+        {
+          "name": "text_embedding",
+          "define": "DEFINE FIELD text_embedding ON embeddings TYPE array<float> | none PERMISSIONS FULL",
+          "type": {
+            "kind": "array",
+            "inner": {
+              "kind": "primitive",
+              "name": "float"
+            },
+            "max": null
+          },
+          "optional": true,
+          "flexible": false,
+          "readonly": false,
+          "hasDefault": false,
+          "rawType": "array<float> | none"
+        },
+        {
+          "name": "text_embedding.*",
+          "define": "DEFINE FIELD text_embedding.* ON embeddings TYPE float PERMISSIONS FULL",
+          "type": {
+            "kind": "primitive",
+            "name": "float"
+          },
+          "optional": false,
+          "flexible": false,
+          "readonly": false,
+          "hasDefault": false,
+          "rawType": "float"
+        }
+      ],
+      "events": [],
+      "indexes": []
+    },
+    {
+      "name": "levels",
+      "define": "DEFINE TABLE levels TYPE NORMAL SCHEMAFULL PERMISSIONS NONE",
+      "schemafull": true,
+      "kind": "NORMAL",
+      "fields": [
+        {
+          "name": "name",
+          "define": "DEFINE FIELD name ON levels TYPE string PERMISSIONS FULL",
+          "type": {
+            "kind": "primitive",
+            "name": "string"
+          },
+          "optional": false,
+          "flexible": false,
+          "readonly": false,
+          "hasDefault": false,
+          "rawType": "string"
+        },
+        {
+          "name": "ord",
+          "define": "DEFINE FIELD ord ON levels TYPE int DEFAULT 1 PERMISSIONS FULL",
+          "type": {
+            "kind": "primitive",
+            "name": "int"
+          },
+          "optional": false,
+          "flexible": false,
+          "readonly": false,
+          "hasDefault": true,
+          "rawType": "int"
+        }
+      ],
+      "events": [],
+      "indexes": []
+    },
+    {
+      "name": "rents",
+      "define": "DEFINE TABLE rents TYPE NORMAL SCHEMAFULL PERMISSIONS NONE",
+      "schemafull": true,
+      "kind": "NORMAL",
+      "fields": [
+        {
+          "name": "geometry",
+          "define": "DEFINE FIELD geometry ON rents TYPE geometry<polygon> PERMISSIONS FULL",
+          "type": {
+            "kind": "geometry",
+            "kinds": [
+              "polygon"
+            ]
+          },
+          "optional": false,
+          "flexible": false,
+          "readonly": false,
+          "hasDefault": false,
+          "rawType": "geometry<polygon>"
+        },
+        {
+          "name": "level",
+          "define": "DEFINE FIELD level ON rents TYPE record<levels> PERMISSIONS FULL",
+          "type": {
+            "kind": "record",
+            "tables": [
+              "levels"
+            ]
+          },
+          "optional": false,
+          "flexible": false,
+          "readonly": false,
+          "hasDefault": false,
+          "rawType": "record<levels>"
+        },
+        {
+          "name": "name",
+          "define": "DEFINE FIELD name ON rents TYPE string PERMISSIONS FULL",
+          "type": {
+            "kind": "primitive",
+            "name": "string"
+          },
+          "optional": false,
+          "flexible": false,
+          "readonly": false,
+          "hasDefault": false,
+          "rawType": "string"
+        }
+      ],
+      "events": [],
+      "indexes": []
+    },
+    {
+      "name": "shops",
+      "define": "DEFINE TABLE shops TYPE NORMAL SCHEMAFULL PERMISSIONS NONE",
+      "schemafull": true,
+      "kind": "NORMAL",
+      "fields": [
+        {
+          "name": "aliases",
+          "define": "DEFINE FIELD aliases ON shops TYPE array<string> | none PERMISSIONS FULL",
+          "type": {
+            "kind": "array",
+            "inner": {
+              "kind": "primitive",
+              "name": "string"
+            },
+            "max": null
+          },
+          "optional": true,
+          "flexible": false,
+          "readonly": false,
+          "hasDefault": false,
+          "rawType": "array<string> | none"
+        },
+        {
+          "name": "aliases.*",
+          "define": "DEFINE FIELD aliases.* ON shops TYPE string PERMISSIONS FULL",
+          "type": {
+            "kind": "primitive",
+            "name": "string"
+          },
+          "optional": false,
+          "flexible": false,
+          "readonly": false,
+          "hasDefault": false,
+          "rawType": "string"
+        },
+        {
+          "name": "area",
+          "define": "DEFINE FIELD area ON shops TYPE record<rents> PERMISSIONS FULL",
+          "type": {
+            "kind": "record",
+            "tables": [
+              "rents"
+            ]
+          },
+          "optional": false,
+          "flexible": false,
+          "readonly": false,
+          "hasDefault": false,
+          "rawType": "record<rents>"
+        },
+        {
+          "name": "name",
+          "define": "DEFINE FIELD name ON shops TYPE string PERMISSIONS FULL",
+          "type": {
+            "kind": "primitive",
+            "name": "string"
+          },
+          "optional": false,
+          "flexible": false,
+          "readonly": false,
+          "hasDefault": false,
+          "rawType": "string"
+        }
+      ],
+      "events": [],
+      "indexes": []
+    },
+    {
+      "name": "zones",
+      "define": "DEFINE TABLE zones TYPE NORMAL SCHEMAFULL PERMISSIONS NONE",
+      "schemafull": true,
+      "kind": "NORMAL",
+      "fields": [
+        {
+          "name": "geometry",
+          "define": "DEFINE FIELD geometry ON zones TYPE geometry<polygon> PERMISSIONS FULL",
+          "type": {
+            "kind": "geometry",
+            "kinds": [
+              "polygon"
+            ]
+          },
+          "optional": false,
+          "flexible": false,
+          "readonly": false,
+          "hasDefault": false,
+          "rawType": "geometry<polygon>"
+        },
+        {
+          "name": "level",
+          "define": "DEFINE FIELD level ON zones TYPE record<levels> PERMISSIONS FULL",
+          "type": {
+            "kind": "record",
+            "tables": [
+              "levels"
+            ]
+          },
+          "optional": false,
+          "flexible": false,
+          "readonly": false,
+          "hasDefault": false,
+          "rawType": "record<levels>"
+        },
+        {
+          "name": "name",
+          "define": "DEFINE FIELD name ON zones TYPE string PERMISSIONS FULL",
+          "type": {
+            "kind": "primitive",
+            "name": "string"
+          },
+          "optional": false,
+          "flexible": false,
+          "readonly": false,
+          "hasDefault": false,
+          "rawType": "string"
+        }
+      ],
+      "events": [],
+      "indexes": []
+    }
+  ],
+  "functions": [
+    {
+      "name": "fn::get_tables",
+      "define": "DEFINE FUNCTION fn::get_tables() -> array<string> { LET $info = (INFO FOR DATABASE); LET $out = []; FOR $table IN object::keys($info.tables) { LET $definition = $info.tables[$table]; LET $definition = string::words($definition); LET $filter = $definition.find_index('TYPE'); array::add($out, { name: $table, type: $definition[$filter + 1] }); }; RETURN $out; } COMMENT '' PERMISSIONS FULL",
+      "args": [],
+      "returns": {
+        "kind": "array",
+        "inner": {
+          "kind": "primitive",
+          "name": "string"
+        },
+        "max": null
+      }
+    }
+  ],
+  "params": [],
+  "analyzers": [],
+  "accesses": [],
+  "apis": [],
+  "buckets": [
+    {
+      "name": "draft",
+      "define": "DEFINE BUCKET draft BACKEND 'memory' PERMISSIONS FULL"
+    },
+    {
+      "name": "images",
+      "define": "DEFINE BUCKET images BACKEND 'file:C:/Users/5q/gits/map/data/bucket' PERMISSIONS FULL"
+    }
+  ],
+  "sequences": [],
+  "configs": [],
+  "models": [],
+  "users": []
+}
