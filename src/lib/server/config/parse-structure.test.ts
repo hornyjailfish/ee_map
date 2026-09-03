@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { buildAutoProfile, parseDbTables, parseTableFields } from './parse-structure';
+import {
+	buildAutoProfile,
+	parseDbTables,
+	parsePermissions,
+	parseTableFields
+} from './parse-structure';
 
 /** Fixtures shaped like live Surreal STRUCTURE responses from this project. */
 const dbStructure = {
@@ -180,6 +185,22 @@ describe('parseTableFields (STRUCTURE only)', () => {
 		});
 	});
 
+	it('drops array element markers so arrays stay a single column', () => {
+		const fields = parseTableFields({
+			fields: [
+				{ name: 'name', kind: 'string' },
+				{ name: 'aliases', kind: 'array<string> | none' },
+				{ name: 'aliases.*', kind: 'string' }
+			]
+		});
+		expect(fields.map((f) => f.name)).toEqual(['aliases', 'name']);
+		expect(fields.find((f) => f.name === 'aliases')).toEqual({
+			name: 'aliases',
+			type: 'array',
+			optional: true
+		});
+	});
+
 	it('ignores plain INFO fields map of DEFINE strings', () => {
 		const plain = {
 			fields: {
@@ -188,6 +209,32 @@ describe('parseTableFields (STRUCTURE only)', () => {
 			}
 		};
 		expect(parseTableFields(plain)).toEqual([]);
+	});
+});
+
+describe('parsePermissions', () => {
+	it('maps FULL booleans and NONE booleans', () => {
+		expect(
+			parsePermissions({ create: true, delete: false, select: true, update: false })
+		).toEqual({ create: true, delete: false, select: true, update: false });
+	});
+
+	it('treats non-empty role-scoped WHERE expressions as writable', () => {
+		expect(
+			parsePermissions({
+				create: '$auth.role INSIDE [EDITOR, OWNER]',
+				update: '$auth.role INSIDE [EDITOR, OWNER]',
+				delete: false,
+				select: true
+			})
+		).toEqual({ create: true, update: true, delete: false, select: true });
+	});
+
+	it('returns undefined for missing or empty permissions', () => {
+		expect(parsePermissions(undefined)).toBeUndefined();
+		expect(parsePermissions(null)).toBeUndefined();
+		expect(parsePermissions({})).toBeUndefined();
+		expect(parsePermissions({ create: '', update: ' ' })).toBeUndefined();
 	});
 });
 
