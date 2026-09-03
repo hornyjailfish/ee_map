@@ -1,5 +1,6 @@
 export { introspect } from './introspect';
 export { loadOverlay, normalizeOverlay } from './load-overlay';
+export { saveOverlay } from './save-overlay';
 export {
 	resolveAppConfig,
 	invalidateConfigCache,

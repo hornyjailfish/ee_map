@@ -4,6 +4,20 @@ import { closeSession, dbConfig, systemViewerAuth } from '$lib/server/db';
 
 export type { AppCatalog, AppRole, CatalogUser } from '$lib/catalog-types';
 
+/**
+ * Resolve the signed-in user's roles from the namespace catalog.
+ * Returns an empty array when the user is unknown or has no roles.
+ */
+export async function getUserRoles(
+	namespace: string,
+	user: string | null | undefined,
+	fetchImpl?: typeof globalThis.fetch
+): Promise<AppRole[]> {
+	if (!user) return [];
+	const catalog = await loadAppCatalog(namespace, fetchImpl);
+	return catalog.users.find((entry) => entry.name === user)?.roles ?? [];
+}
+
 type StructuredUser = {
 	name?: unknown;
 	roles?: unknown;

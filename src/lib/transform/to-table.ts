@@ -7,7 +7,8 @@ import type {
 	ResolvedConfig,
 	ResolvedEntity,
 	ResolvedField,
-	ResolvedTableSortKey
+	ResolvedTableSortKey,
+	TablePermissions
 } from '$lib/config';
 import { sortRowsByKeys } from './compare';
 import { formatRecordCellValue, type RecordLabelIndex, type RecordStore } from './record-label';
@@ -23,6 +24,8 @@ export type TableColumn = {
 	/** Present when the column is a record link (future editors / styling). */
 	valueType?: string;
 	recordTargets?: string[];
+	/** False when the field is required (drives add-row form validation). */
+	optional?: boolean;
 };
 
 export type TableRow = Record<string, unknown> & { id: string };
@@ -35,6 +38,8 @@ export type TableViewModel = {
 	data: TableRow[];
 	/** Default sort keys from entity config (applied to `data`; client shows marks). */
 	sort?: ResolvedTableSortKey[];
+	/** Live write capabilities from STRUCTURE — drives add/edit/delete controls. */
+	permissions: TablePermissions;
 };
 
 export type ToTableOptions = {
@@ -55,7 +60,8 @@ export function buildColumns(entity: ResolvedEntity): TableColumn[] {
 		const col: TableColumn = {
 			id: field.name,
 			header: field.label,
-			sort: true
+			sort: true,
+			optional: field.optional
 		};
 		if (field.width !== undefined) col.width = field.width;
 		if (field.readOnly) col.readOnly = true;
@@ -109,7 +115,8 @@ export function toTable(
 		table: entity.name,
 		label: entity.label,
 		columns,
-		data
+		data,
+		permissions: entity.permissions
 	};
 	if (sort?.length) view.sort = sort;
 	return view;

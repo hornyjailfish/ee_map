@@ -38,7 +38,13 @@ function entity(
 	display: ResolvedEntity['display'],
 	fields: ResolvedEntity['fields'] = []
 ): ResolvedEntity {
-	return { name, label: name, fields, ...(display ? { display } : {}) };
+	return {
+		name,
+		label: name,
+		fields,
+		permissions: { create: false, update: false, delete: false, select: false },
+		...(display ? { display } : {})
+	};
 }
 
 describe('formatRecordLabel', () => {

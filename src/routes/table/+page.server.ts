@@ -1,6 +1,20 @@
-import type { PageServerLoad } from './$types';
+import { fail } from '@sveltejs/kit';
+import type { Actions, PageServerLoad } from './$types';
 import type { ResolvedConfig, ResolvedEntity } from '$lib/config/types';
-import { isValidTableName, loadRecordLabels, queryEntities } from '$lib/server/data';
+import {
+	assertCanEdit,
+	createRecord,
+	deleteRecord,
+	isValidTableName,
+	loadRecordLabels,
+	loadRecordOptions,
+	MutateError,
+	patchRecord,
+	queryEntities,
+	type RecordOption
+} from '$lib/server/data';
+import { resolveAppConfig } from '$lib/server/config';
+import { getUserRoles } from '$lib/server/catalog';
 import { entityByName, toTable, type TableViewModel } from '$lib/transform/to-table';
 
 export type TableOption = {
@@ -15,6 +29,8 @@ export type TablePageData = {
 	tables: TableOption[];
 	/** Serializable grid model, or null when nothing to show. */
 	view: TableViewModel | null;
+	/** Record-link picker options keyed by field name (add-row form). */
+	recordOptions: Record<string, RecordOption[]>;
 	/** Non-fatal load / validation message. */
 	error: string | null;
 };
@@ -24,6 +40,7 @@ function emptyPage(partial?: Partial<TablePageData>): TablePageData {
 		table: null,
 		tables: [],
 		view: null,
+		recordOptions: {},
 		error: null,
 		...partial
 	};
@@ -76,6 +93,88 @@ function resolveEntity(
 	return { entity, table: entity.name, error: null };
 }
 
+/** Resolve the signed-in user's roles + the active entity for a write action. */
+async function resolveForWrite(locals: App.Locals, fetch: typeof globalThis.fetch, table: unknown) {
+	if (!locals.session?.isConnected) {
+		throw new MutateError(503, 'db_unavailable', 'Database unavailable');
+	}
+	if (typeof table !== 'string' || !isValidTableName(table)) {
+		throw new MutateError(400, 'invalid_table', 'Invalid table name');
+	}
+
+	const [config, roles] = await Promise.all([
+		resolveAppConfig(locals.session),
+		getUserRoles(locals.selection.namespace, locals.user, fetch)
+	]);
+
+	assertCanEdit(roles);
+
+	const entity = entityByName(config, table);
+	if (!entity) {
+		throw new MutateError(404, 'unknown_table', `Unknown table: ${table}`);
+	}
+	return entity;
+}
+
+function failFromError(error: unknown) {
+	if (error instanceof MutateError) {
+		return fail(error.status, { code: error.code, message: error.message });
+	}
+	const message = error instanceof Error ? error.message : 'Write failed';
+	console.warn('[table] write failed:', message);
+	return fail(500, { code: 'write_failed', message });
+}
+
+export const actions: Actions = {
+	updateCell: async ({ request, locals, fetch }) => {
+		const data = await request.formData();
+		const table = data.get('table');
+		const id = String(data.get('id') ?? '');
+		const field = String(data.get('field') ?? '');
+		const value = data.get('value');
+
+		try {
+			const entity = await resolveForWrite(locals, fetch, table);
+			await patchRecord(locals.session!, entity, id, { [field]: value });
+			return { ok: true };
+		} catch (error) {
+			return failFromError(error);
+		}
+	},
+
+	addRow: async ({ request, locals, fetch }) => {
+		const data = await request.formData();
+		const table = data.get('table');
+		const values: Record<string, unknown> = {};
+		for (const [key, value] of data.entries()) {
+			if (key === 'table') continue;
+			values[key] = value;
+		}
+
+		try {
+			const entity = await resolveForWrite(locals, fetch, table);
+			const id = await createRecord(locals.session!, entity, values);
+			return { ok: true, id };
+		} catch (error) {
+			return failFromError(error);
+		}
+	},
+
+	deleteRow: async ({ request, locals, fetch }) => {
+		const data = await request.formData();
+		const table = data.get('table');
+		const id = String(data.get('id') ?? '');
+
+		try {
+			const entity = await resolveForWrite(locals, fetch, table);
+			await deleteRecord(locals.session!, entity, id);
+			return { ok: true };
+		} catch (error) {
+			return failFromError(error);
+		}
+	}
+};
+
 export const load: PageServerLoad = async ({ parent, locals, url }): Promise<TablePageData> => {
 	const layout = await parent();
 	const config = layout.config;
@@ -114,12 +213,16 @@ export const load: PageServerLoad = async ({ parent, locals, url }): Promise<Tab
 
 	try {
 		const rows = await queryEntities(locals.session, resolved.table);
-		const { labels, store } = await loadRecordLabels(locals.session, config, resolved.entity, rows);
+		const [{ labels, store }, recordOptions] = await Promise.all([
+			loadRecordLabels(locals.session, config, resolved.entity, rows),
+			loadRecordOptions(locals.session, config, resolved.entity)
+		]);
 		const view = toTable(resolved.entity, rows, { labels, store, config });
 		return {
 			table: resolved.table,
 			tables,
 			view,
+			recordOptions,
 			error: resolved.error
 		};
 	} catch (err) {

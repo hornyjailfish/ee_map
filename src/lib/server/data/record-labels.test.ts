@@ -40,6 +40,7 @@ describe('record label load outcome (pure)', () => {
 				name: 'boards',
 				label: 'Boards',
 				fields: [],
+				permissions: { create: false, update: false, delete: false, select: false },
 				display: {
 					parts: [{ path: 'room.name' }, { path: 'name' }],
 					sep: ' · '
@@ -49,6 +50,7 @@ describe('record label load outcome (pure)', () => {
 				name: 'electric_rooms',
 				label: 'Rooms',
 				fields: [],
+				permissions: { create: false, update: false, delete: false, select: false },
 				display: { parts: [{ path: 'name' }], sep: ' · ' }
 			}
 		]);
@@ -75,6 +77,7 @@ describe('record label load outcome (pure)', () => {
 				name: 'boards',
 				label: 'Boards',
 				fields: [],
+				permissions: { create: false, update: false, delete: false, select: false },
 				display: {
 					parts: [{ path: 'room.name' }, { path: 'name' }],
 					sep: ' · '
@@ -83,6 +86,7 @@ describe('record label load outcome (pure)', () => {
 			{
 				name: 'breakers',
 				label: 'Breakers',
+				permissions: { create: false, update: false, delete: false, select: false },
 				fields: [
 					{
 						name: 'name',
@@ -108,6 +112,7 @@ describe('record label load outcome (pure)', () => {
 				name: 'electric_rooms',
 				label: 'Rooms',
 				fields: [],
+				permissions: { create: false, update: false, delete: false, select: false },
 				display: { parts: [{ path: 'name' }], sep: ' · ' }
 			}
 		]);

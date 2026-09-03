@@ -15,4 +15,32 @@ export {
 	type QueryGraphBundleOptions
 } from './query-graph-bundle';
 
-export { loadRecordLabels, type RecordLabelLoadResult } from './record-labels';
+export {
+	loadRecordLabels,
+	loadRecordOptions,
+	type RecordLabelLoadResult,
+	type RecordOption
+} from './record-labels';
+
+export {
+	MutateError,
+	assertCanEdit,
+	assertCanOwn,
+	assertCanUpdate,
+	assertCanCreate,
+	assertCanDelete,
+	assertCanRelate,
+	assertCanUnrelate,
+	writableFields,
+	coerceScalar,
+	coercePatch,
+	validateRecordId,
+	tableOfId,
+	validateConnectEndpoints,
+	patchRecord,
+	createRecord,
+	deleteRecord,
+	relateConnect,
+	unrelateConnect,
+	type WritableField
+} from './mutate';
