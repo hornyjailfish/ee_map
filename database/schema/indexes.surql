@@ -3,9 +3,13 @@ DEFINE INDEX unique_electric_room_name
     COLUMNS name
     UNIQUE;
 
-DEFINE INDEX unique_areas
-    ON TABLE rent
-    COLUMNS name, geometry
+DEFINE INDEX unique_rent_name
+    ON TABLE rents
+    COLUMNS name, level
+    UNIQUE;
+DEFINE INDEX unique_geometry
+    ON TABLE rents
+    COLUMNS geometry
     UNIQUE;
 
 DEFINE INDEX unique_shops
