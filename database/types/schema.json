@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-09-02T05:03:07.3515317Z",
+  "generatedAt": "2026-09-02T12:06:16.0810848Z",
   "namespace": "main",
   "database": "main",
   "tables": [
@@ -388,7 +388,7 @@
     },
     {
       "name": "boards",
-      "define": "DEFINE TABLE boards TYPE NORMAL SCHEMAFULL PERMISSIONS NONE",
+      "define": "DEFINE TABLE boards TYPE NORMAL SCHEMAFULL PERMISSIONS FULL",
       "schemafull": true,
       "kind": "NORMAL",
       "fields": [
@@ -431,7 +431,7 @@
     },
     {
       "name": "breakers",
-      "define": "DEFINE TABLE breakers TYPE NORMAL SCHEMAFULL PERMISSIONS NONE",
+      "define": "DEFINE TABLE breakers TYPE NORMAL SCHEMAFULL PERMISSIONS FULL",
       "schemafull": true,
       "kind": "NORMAL",
       "fields": [
@@ -500,7 +500,7 @@
     },
     {
       "name": "connects",
-      "define": "DEFINE TABLE connects TYPE RELATION IN breakers OUT breakers | rents SCHEMALESS PERMISSIONS NONE",
+      "define": "DEFINE TABLE connects TYPE RELATION IN breakers OUT breakers | rents SCHEMALESS PERMISSIONS FULL",
       "schemafull": false,
       "kind": "RELATION",
       "fields": [
@@ -559,7 +559,7 @@
     },
     {
       "name": "electric_rooms",
-      "define": "DEFINE TABLE electric_rooms TYPE NORMAL SCHEMAFULL PERMISSIONS NONE",
+      "define": "DEFINE TABLE electric_rooms TYPE NORMAL SCHEMAFULL PERMISSIONS FULL",
       "schemafull": true,
       "kind": "NORMAL",
       "fields": [
@@ -728,7 +728,7 @@
     },
     {
       "name": "levels",
-      "define": "DEFINE TABLE levels TYPE NORMAL SCHEMAFULL PERMISSIONS NONE",
+      "define": "DEFINE TABLE levels TYPE NORMAL SCHEMAFULL PERMISSIONS FULL",
       "schemafull": true,
       "kind": "NORMAL",
       "fields": [
@@ -764,39 +764,39 @@
     },
     {
       "name": "rents",
-      "define": "DEFINE TABLE rents TYPE NORMAL SCHEMAFULL PERMISSIONS NONE",
+      "define": "DEFINE TABLE rents TYPE NORMAL SCHEMAFULL PERMISSIONS FULL",
       "schemafull": true,
       "kind": "NORMAL",
       "fields": [
         {
           "name": "geometry",
-          "define": "DEFINE FIELD geometry ON rents TYPE geometry<polygon> PERMISSIONS FULL",
+          "define": "DEFINE FIELD geometry ON rents TYPE geometry<polygon> | none PERMISSIONS FULL",
           "type": {
             "kind": "geometry",
             "kinds": [
               "polygon"
             ]
           },
-          "optional": false,
+          "optional": true,
           "flexible": false,
           "readonly": false,
           "hasDefault": false,
-          "rawType": "geometry<polygon>"
+          "rawType": "geometry<polygon> | none"
         },
         {
           "name": "level",
-          "define": "DEFINE FIELD level ON rents TYPE record<levels> PERMISSIONS FULL",
+          "define": "DEFINE FIELD level ON rents TYPE record<levels> | none PERMISSIONS FULL",
           "type": {
             "kind": "record",
             "tables": [
               "levels"
             ]
           },
-          "optional": false,
+          "optional": true,
           "flexible": false,
           "readonly": false,
           "hasDefault": false,
-          "rawType": "record<levels>"
+          "rawType": "record<levels> | none"
         },
         {
           "name": "name",
@@ -817,7 +817,7 @@
     },
     {
       "name": "shops",
-      "define": "DEFINE TABLE shops TYPE NORMAL SCHEMAFULL PERMISSIONS NONE",
+      "define": "DEFINE TABLE shops TYPE NORMAL SCHEMAFULL PERMISSIONS FULL",
       "schemafull": true,
       "kind": "NORMAL",
       "fields": [
@@ -881,11 +881,16 @@
         }
       ],
       "events": [],
-      "indexes": []
+      "indexes": [
+        {
+          "name": "unique_shops",
+          "define": "DEFINE INDEX unique_shops ON shops FIELDS area UNIQUE"
+        }
+      ]
     },
     {
       "name": "zones",
-      "define": "DEFINE TABLE zones TYPE NORMAL SCHEMAFULL PERMISSIONS NONE",
+      "define": "DEFINE TABLE zones TYPE NORMAL SCHEMAFULL PERMISSIONS FULL",
       "schemafull": true,
       "kind": "NORMAL",
       "fields": [
@@ -937,21 +942,7 @@
       "indexes": []
     }
   ],
-  "functions": [
-    {
-      "name": "fn::get_tables",
-      "define": "DEFINE FUNCTION fn::get_tables() -> array<string> { LET $info = (INFO FOR DATABASE); LET $out = []; FOR $table IN object::keys($info.tables) { LET $definition = $info.tables[$table]; LET $definition = string::words($definition); LET $filter = $definition.find_index('TYPE'); array::add($out, { name: $table, type: $definition[$filter + 1] }); }; RETURN $out; } COMMENT '' PERMISSIONS FULL",
-      "args": [],
-      "returns": {
-        "kind": "array",
-        "inner": {
-          "kind": "primitive",
-          "name": "string"
-        },
-        "max": null
-      }
-    }
-  ],
+  "functions": [],
   "params": [],
   "analyzers": [],
   "accesses": [],
@@ -960,14 +951,15 @@
     {
       "name": "draft",
       "define": "DEFINE BUCKET draft BACKEND 'memory' PERMISSIONS FULL"
-    },
-    {
-      "name": "images",
-      "define": "DEFINE BUCKET images BACKEND 'file:C:/Users/5q/gits/map/data/bucket' PERMISSIONS FULL"
     }
   ],
   "sequences": [],
   "configs": [],
   "models": [],
-  "users": []
+  "users": [
+    {
+      "name": "asdf",
+      "define": "DEFINE USER asdf ON DATABASE PASSHASH '[REDACTED]' ROLES VIEWER DURATION FOR TOKEN 1h, FOR SESSION NONE"
+    }
+  ]
 }

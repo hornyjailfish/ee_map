@@ -19,6 +19,7 @@ function entity(name: string, extra: Partial<ResolvedEntity> = {}): ResolvedEnti
 		name,
 		label: name,
 		fields: [field('id'), field('name'), field('level', 'record'), field('geometry', 'geometry')],
+		permissions: { create: false, update: false, delete: false, select: false },
 		...extra
 	};
 }

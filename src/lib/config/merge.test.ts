@@ -279,14 +279,16 @@ describe('merge', () => {
 						hidden: false,
 						readOnly: false
 					}
-				]
+				],
+				permissions: { create: false, update: false, delete: false, select: false }
 			},
 			{
 				name: 'rents',
 				role: 'other',
 				in: ['shops'],
 				out: ['zones'],
-				fields: []
+				fields: [],
+				permissions: { create: false, update: false, delete: false, select: false }
 			}
 		]);
 	});

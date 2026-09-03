@@ -2,7 +2,7 @@
 
 Internal tool for an electrical engineering team. Three views over the same Surreal data and session, driven by a shared configuration layer.
 
-**Status:** config spine + three read views + cross-view selection (N10). Search deferred (embeddings). CRUD next.  
+**Status:** config spine + three read views + selection (N10) + table CRUD (C0–C2) + graph wire persist (C3) + overlay admin (N12). Search deferred. Map geom edit (C4) next.  
 **Stack:** SvelteKit + Surreal session/auth + SurrealKit (schema/seed/typegen) + SVAR Grid + Svelte Flow/ELK + OpenLayers.
 
 ---
@@ -18,9 +18,10 @@ Internal tool for an electrical engineering team. Three views over the same Surr
 | Typegen → `src/lib/types/` (SDK interfaces)                        | Done (regenerate after schema edits)          |
 | `app_config` overlay / merge / resolve                             | **N1–N3 done** (merge + live resolve + seed)  |
 | `AppUiState`, view nav, full-page chrome                           | **N4 done**                                   |
-| `/table`, `/graph`, `/map`                                         | **N5–N8 done** (read-only live views)         |
-| Shared focus (`appUi.focusedId`) across views                      | **N10 done**                                  |
-| Header search                                                      | **Deferred** (embedding service; no data yet) |
+| `/table`, `/graph`, `/map`                                                 | **N5–N8 done** + table writes (C1–C2) + graph wires (C3) |
+| Shared focus (`appUi.focusedId`) across views                              | **N10 done**                                  |
+| `/config` overlay editor (OWNER)                                           | **N12 done**                                  |
+| Header search                                                              | **Deferred** (embedding service; no data yet) |
 
 ---
 
@@ -392,10 +393,11 @@ src/lib/client/
 ### Routes
 
 ```text
-/          → light home or redirect
+/		  → light home or redirect
 /table
 /graph
 /map
+/config   → OWNER only (app_config overlay editor)
 ```
 
 ### Layout
@@ -432,7 +434,7 @@ Same record id focuses table row, graph node, and map feature.
 | ------ | -------------------------------- |
 | VIEWER | read all views                   |
 | EDITOR | table edit; later map/graph edit |
-| OWNER  | overlay admin later              |
+| OWNER  | overlay admin (`/config`)        |
 
 ---
 
@@ -500,24 +502,24 @@ Resolved entity + rows → to-table → { data, columns } → <Grid />
 | --- | ------------- | ------------------------------------------------------------------------ |
 | N9  | Header search | Will call a separate embeddings service; domain rows have no vectors yet |
 
-### Next (execute in order) — CRUD
+### CRUD progress
 
 | #       | Slice                                       | Outcome                        |
 | ------- | ------------------------------------------- | ------------------------------ |
-| **C0**  | Server mutate module + role gate            | Safe write path                |
-| **C1**  | Table inline edit (SVAR) + optimistic patch | EDITOR/OWNER ops on attributes |
-| **C2**  | Table add/delete row                        | Full table CRUD                |
-| **C3**  | Graph: persist `connects` on draw/delete    | Topology edits stick           |
+| **C0**  | Server mutate module + role gate            | **Done**                       |
+| **C1**  | Table inline edit (SVAR) + patch            | **Done** (scalars; links via add form) |
+| **C2**  | Table add/delete row                        | **Done**                       |
+| **C3**  | Graph: persist `connects` on draw/delete    | **Done** (EDITOR/OWNER only; VIEWER blocked) |
 | **C4**  | Map: geometry edit (vertex drag / assign)   | Spatial ops (optional v1.1)    |
-| **N12** | Light overlay admin UI                      | Config without deploys         |
+| **N12** | Light overlay admin UI (`/config`, OWNER)   | **Done** — soft overlay editor |
 
 ### Immediate coding focus
 
 ```text
-C0 → C1
+C4 or C1.1 (inline record picker)
 ```
 
-Shared server write seam + table cell edit first. Graph wire persist after table is trusted.
+Table + graph writes are live. VIEWER is read-only on all write seams (`assertCanEdit`).
 
 ### CRUD design (toward C0–C4)
 
@@ -535,12 +537,11 @@ Gate on server from session user + catalog roles (same source as `userRoles` tod
 
 ```text
 src/lib/server/data/mutate.ts
-  assertCanEdit(locals) → EDITOR | OWNER
-  patchRecord(session, table, id, fields)   // MERGE / update selected keys
-  createRecord(session, table, fields)
-  deleteRecord(session, table, id)
-  relateConnect(session, inId, outId, meta?) // RELATE breakers→… VIA connects
-  unrelateConnect(session, edgeId)
+  assertCanEdit(roles) → EDITOR | OWNER   // VIEWER always rejected
+  patchRecord / createRecord / deleteRecord
+  relateConnect(session, relation, inId, outId, meta?)
+  unrelateConnect(session, relation, edgeId)
+/graph actions: connect + disconnect (same role gate)
 ```
 
 - Allowlist **table** via `ResolvedConfig.tables` / `isValidTableName`

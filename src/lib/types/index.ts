@@ -67,7 +67,7 @@ export interface Rents {
 export interface Shops {
 	id: RecordId<'shops'>;
 	aliases?: string[];
-	area: RecordId<'rents'>;
+	area?: RecordId<'rents'>;
 	name: string;
 }
 

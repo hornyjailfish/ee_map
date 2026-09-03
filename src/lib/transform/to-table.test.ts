@@ -24,6 +24,7 @@ function entity(
 	return {
 		name: overrides.name ?? 'people',
 		label: overrides.label ?? overrides.name ?? 'People',
+		permissions: { create: false, update: false, delete: false, select: false },
 		...overrides
 	};
 }
@@ -101,7 +102,8 @@ describe('buildColumns', () => {
 				width: 160,
 				readOnly: true,
 				editor: false,
-				valueType: 'string'
+				valueType: 'string',
+				optional: false
 			}
 		]);
 	});

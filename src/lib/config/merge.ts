@@ -19,12 +19,31 @@ import type {
 	ResolvedMapLayer,
 	ResolvedSearch,
 	ResolvedTableSortKey,
+	TablePermissions,
 	TableSortKeyOverlay
 } from './types';
 
 const DEFAULT_HIERARCHY = ['room', 'board', 'breaker', 'output', 'group'] as const;
 const SYSTEM_TABLE = /^__/;
 const DEFAULT_DISPLAY_SEP = ' · ';
+
+/** Fail-closed permissions: absent STRUCTURE flags mean "not writable". */
+const NO_PERMISSIONS: TablePermissions = {
+	create: false,
+	update: false,
+	delete: false,
+	select: false
+};
+
+/** Normalize STRUCTURE permissions to concrete booleans (default false). */
+function normalizePermissions(raw?: TablePermissions): TablePermissions {
+	return {
+		create: raw?.create ?? false,
+		update: raw?.update ?? false,
+		delete: raw?.delete ?? false,
+		select: raw?.select ?? false
+	};
+}
 
 export const DEFAULT_GRAPH_LAYOUT: ResolvedGraphLayout = {
 	direction: 'DOWN',
@@ -111,7 +130,8 @@ function resolveEntity(
 	const entity: ResolvedEntity = {
 		name: table.name,
 		label: entityOv?.label ?? table.name,
-		fields: resolveFields(table, entityOv?.table, diagnostics)
+		fields: resolveFields(table, entityOv?.table, diagnostics),
+		permissions: normalizePermissions(table.permissions)
 	};
 
 	const display = resolveEntityDisplay(table, entityOv, fieldNames, diagnostics);
@@ -410,7 +430,8 @@ function resolveEdge(table: AutoProfileTable, overlay: AppConfigOverlay | undefi
 		role: edgeOv?.role ?? 'other',
 		in: table.in ?? [],
 		out: table.out ?? [],
-		fields: resolveFields(table)
+		fields: resolveFields(table),
+		permissions: normalizePermissions(table.permissions)
 	};
 	if (edgeOv?.edgeType !== undefined) edge.edgeType = edgeOv.edgeType;
 	if (edgeOv?.labelField !== undefined) edge.labelField = edgeOv.labelField;

@@ -26,6 +26,7 @@ export type {
 	AutoProfileField,
 	AutoProfileTable,
 	AutoProfile,
+	TablePermissions,
 	SurrealEngineVersion,
 	// Resolved
 	Diagnostic,
@@ -47,3 +48,19 @@ export type {
 
 export { merge, DEFAULT_GRAPH_LAYOUT } from './merge';
 export { parseSurrealVersion, engineAtLeast } from './surreal-version';
+export {
+	OVERLAY_DOC_ID,
+	emptyOverlay,
+	cloneOverlay,
+	stringifyOverlay,
+	parseOverlayJson,
+	softParseOverlay,
+	parseStringList,
+	formatStringList,
+	parseSortText,
+	formatSortText,
+	formatDisplayText,
+	parseDisplayText,
+	sortedKeys,
+	type OverlayParseResult
+} from './overlay-io';
