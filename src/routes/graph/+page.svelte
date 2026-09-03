@@ -5,6 +5,7 @@
 	import ViewLoadingOverlay from '$lib/components/view/ViewLoadingOverlay.svelte';
 	import CircleAlertIcon from '@lucide/svelte/icons/circle-alert';
 	import type { AppRole } from '$lib/catalog-types';
+	import { canEdit } from '$lib/roles';
 	import type { GraphViewModel } from '$lib/transform/to-graph';
 	import type { PageData } from './$types';
 
@@ -12,16 +13,20 @@
 
 	const graph = $derived(data.graph);
 	const error = $derived(data.error);
+	const relation = $derived(data.relation);
 	const nodeCount = $derived(graph?.nodes.length ?? 0);
 	const edgeCount = $derived(graph?.edges.length ?? 0);
 	const userRoles = $derived((data.userRoles ?? []) as AppRole[]);
-	const canEdit = $derived(userRoles.includes('EDITOR') || userRoles.includes('OWNER'));
+	/** VIEWER never gets connect handles or write UI. */
+	const roleCanEdit = $derived(canEdit(userRoles));
 
-	/** Lazy client-only mount so SF/ELK never evaluate on the server. */
-	type GraphViewProps = { graph: GraphViewModel; canEdit?: boolean };
+	type GraphViewProps = {
+		graph: GraphViewModel;
+		canEdit?: boolean;
+		relation?: string | null;
+	};
 	let GraphView = $state<Component<GraphViewProps> | null>(null);
 
-	// Script body runs once per instance — start import on the client only
 	if (browser) {
 		void import('$lib/components/graph/GraphView.svelte').then((m) => {
 			GraphView = m.default;
@@ -42,7 +47,7 @@
 				{edgeCount === 1 ? 'edge' : 'edges'}
 			</span>
 		{/if}
-		{#if canEdit}
+		{#if roleCanEdit && relation}
 			<span class="text-xs text-muted-foreground">· connect enabled</span>
 		{/if}
 	</div>
@@ -75,7 +80,7 @@
 				<p>No nodes to display. Check entity rows and graph roles in config.</p>
 			</div>
 		{:else if browser && GraphView}
-			<GraphView {graph} {canEdit} />
+			<GraphView {graph} canEdit={roleCanEdit} {relation} />
 		{:else}
 			<ViewLoadingOverlay label="Loading graph canvas…" veil={false} />
 		{/if}

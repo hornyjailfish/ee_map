@@ -1,27 +1,29 @@
 <script lang="ts">
 	/**
 	 * Graph canvas host.
-	 * `{#key graphKey}` remounts when the server payload changes — no state-sync `$effect`.
+	 * Remount only when nodes/layout change — edge wire edits keep the camera.
 	 */
 	import type { GraphViewModel } from '$lib/transform/to-graph';
-	import { graphSignature } from './graph-flow';
+	import { graphStructureSignature } from './graph-flow';
 	import GraphCanvas from './GraphCanvas.svelte';
 
 	type Props = {
 		/** Stripped graph model without positions (from server). */
 		graph: GraphViewModel;
-		/** EDITOR / OWNER can draw wires between breakers/outputs. */
+		/** EDITOR / OWNER only — VIEWER never draws wires. */
 		canEdit?: boolean;
+		/** Relation table used for persist (e.g. connects). */
+		relation?: string | null;
 	};
 
-	let { graph, canEdit = false }: Props = $props();
+	let { graph, canEdit = false, relation = null }: Props = $props();
 
-	/** Remount canvas when graph structure changes. */
-	const graphKey = $derived(graphSignature(graph));
+	/** Nodes + ELK knobs only. New/deleted wires must not remount (that fitViews). */
+	const structureKey = $derived(graphStructureSignature(graph));
 </script>
 
 <div class="graph-view relative h-full min-h-0 w-full">
-	{#key graphKey}
-		<GraphCanvas {graph} {canEdit} />
+	{#key structureKey}
+		<GraphCanvas {graph} {canEdit} {relation} />
 	{/key}
 </div>

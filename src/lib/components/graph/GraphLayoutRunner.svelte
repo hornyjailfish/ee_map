@@ -22,12 +22,24 @@
 		graph: GraphViewModel;
 		/** Bumped by parent to force a re-layout (button). 0 = no manual request yet. */
 		layoutRequest?: number;
+		/**
+		 * When true (default), fit camera after layout (initial mount + Layout button).
+		 * Wire persist path should not remount; if it ever relayouts, pass false to keep camera.
+		 */
+		fitViewAfter?: boolean;
 		onLayoutStart?: () => void;
 		onLayoutDone: (result: { nodes: GraphNode[]; edges: GraphEdge[] }) => void;
 		onLayoutError: (message: string, fallback: { nodes: GraphNode[]; edges: GraphEdge[] }) => void;
 	};
 
-	let { graph, layoutRequest = 0, onLayoutStart, onLayoutDone, onLayoutError }: Props = $props();
+	let {
+		graph,
+		layoutRequest = 0,
+		fitViewAfter = true,
+		onLayoutStart,
+		onLayoutDone,
+		onLayoutError
+	}: Props = $props();
 
 	const nodesInitialized = useNodesInitialized();
 	const { fitView, getNodes } = useSvelteFlow();
@@ -43,9 +55,10 @@
 		disposed = true;
 	});
 
-	async function runLayout() {
+	async function runLayout(opts?: { fit?: boolean }) {
 		if (running || disposed) return;
 		running = true;
+		const shouldFit = opts?.fit ?? fitViewAfter;
 		onLayoutStart?.();
 
 		try {
@@ -66,9 +79,11 @@
 				edges: toFlowEdges(positioned)
 			});
 
-			requestAnimationFrame(() => {
-				if (!disposed) void fitView({ padding: 0.15, duration: 0 });
-			});
+			if (shouldFit) {
+				requestAnimationFrame(() => {
+					if (!disposed) void fitView({ padding: 0.15, duration: 0 });
+				});
+			}
 		} catch (err) {
 			if (disposed) return;
 			const message = err instanceof Error ? err.message : 'ELK layout failed';
@@ -81,19 +96,19 @@
 		}
 	}
 
-	// Auto once when SF finishes measuring for this mount
+	// Auto once when SF finishes measuring for this mount — always fit on first paint
 	$effect(() => {
 		if (!nodesInitialized.current || autoDone) return;
 		autoDone = true;
-		void runLayout();
+		void runLayout({ fit: true });
 	});
 
-	// Manual re-layout from the Layout button (parent bumps layoutRequest)
+	// Manual re-layout from the Layout button — fit so the full graph is visible
 	$effect(() => {
 		const req = layoutRequest;
 		if (req <= 0 || req === lastManualRequest) return;
 		if (!nodesInitialized.current) return;
 		lastManualRequest = req;
-		void runLayout();
+		void runLayout({ fit: true });
 	});
 </script>

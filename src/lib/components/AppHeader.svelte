@@ -12,6 +12,7 @@
 	import { Input } from '$lib/components/ui/input/index.js';
 	import * as NativeSelect from '$lib/components/ui/native-select/index.js';
 	import { Spinner } from '$lib/components/ui/spinner/index.js';
+	import { canOwn } from '$lib/roles';
 	import { cn } from '$lib/utils';
 	import CircleAlertIcon from '@lucide/svelte/icons/circle-alert';
 
@@ -59,6 +60,7 @@
 	const roles = $derived(
 		userRoles ?? catalog.users.find((entry) => entry.name === user)?.roles ?? []
 	);
+	const showConfigNav = $derived(canOwn(roles));
 	const databases = $derived(
 		catalog.databases.length > 0 ? catalog.databases : [selection.database]
 	);
@@ -171,6 +173,21 @@
 						{item.label}
 					</a>
 				{/each}
+				{#if showConfigNav}
+					{@const configActive = navActive('/config')}
+					<a
+						href={resolve('/config')}
+						class={cn(
+							'rounded-md px-2.5 py-1.5 text-sm transition-colors',
+							configActive
+								? 'bg-muted font-medium text-foreground'
+								: 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
+						)}
+						aria-current={configActive ? 'page' : undefined}
+					>
+						Config
+					</a>
+				{/if}
 			</nav>
 		</div>
 

@@ -6,15 +6,14 @@
 import type { ElkNodeSize } from '$lib/transform/to-elk';
 import type { GraphEdge, GraphNode, GraphViewModel } from '$lib/transform/to-graph';
 
-/** Stable identity for `{#key}` remounts when the graph payload changes. */
-export function graphSignature(model: GraphViewModel): string {
+/** Node + layout identity — used for `{#key}` remounts (camera reset OK). */
+export function graphStructureSignature(model: GraphViewModel): string {
 	const nodePart = model.nodes
 		.map(
 			(n) =>
 				`${n.id}|${n.type ?? ''}|${n.parentId ?? ''}|${n.data.role}|${n.data.label}|${n.connectable ? 1 : 0}`
-		)
+			)
 		.join(';');
-	const edgePart = model.edges.map((e) => `${e.id}|${e.source}>${e.target}`).join(';');
 	const layout = model.layout;
 	const layoutPart = [
 		layout.direction,
@@ -26,7 +25,17 @@ export function graphSignature(model: GraphViewModel): string {
 		layout.compoundPadding.bottom,
 		layout.compoundPadding.right
 	].join('|');
-	return `${nodePart}#${edgePart}#${layoutPart}`;
+	return `${nodePart}#${layoutPart}`;
+}
+
+/** Edge-only identity — canvas stays mounted; edges sync in place (keep camera). */
+export function graphEdgeSignature(model: GraphViewModel): string {
+	return model.edges.map((e) => `${e.id}|${e.source}>${e.target}`).join(';');
+}
+
+/** Full identity (nodes + edges + layout). */
+export function graphSignature(model: GraphViewModel): string {
+	return `${graphStructureSignature(model)}#${graphEdgeSignature(model)}`;
 }
 
 /** Parent ids that have at least one child in the model. */
