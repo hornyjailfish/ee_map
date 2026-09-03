@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-09-02T05:03:07.3515317Z",
+  "generatedAt": "2026-09-03T05:46:03.8405544Z",
   "namespace": "main",
   "database": "main",
   "tables": [
@@ -770,33 +770,33 @@
       "fields": [
         {
           "name": "geometry",
-          "define": "DEFINE FIELD geometry ON rents TYPE geometry<polygon> PERMISSIONS FULL",
+          "define": "DEFINE FIELD geometry ON rents TYPE geometry<polygon> | none PERMISSIONS FULL",
           "type": {
             "kind": "geometry",
             "kinds": [
               "polygon"
             ]
           },
-          "optional": false,
+          "optional": true,
           "flexible": false,
           "readonly": false,
           "hasDefault": false,
-          "rawType": "geometry<polygon>"
+          "rawType": "geometry<polygon> | none"
         },
         {
           "name": "level",
-          "define": "DEFINE FIELD level ON rents TYPE record<levels> PERMISSIONS FULL",
+          "define": "DEFINE FIELD level ON rents TYPE record<levels> | none PERMISSIONS FULL",
           "type": {
             "kind": "record",
             "tables": [
               "levels"
             ]
           },
-          "optional": false,
+          "optional": true,
           "flexible": false,
           "readonly": false,
           "hasDefault": false,
-          "rawType": "record<levels>"
+          "rawType": "record<levels> | none"
         },
         {
           "name": "name",
@@ -813,7 +813,16 @@
         }
       ],
       "events": [],
-      "indexes": []
+      "indexes": [
+        {
+          "name": "unique_geometry",
+          "define": "DEFINE INDEX unique_geometry ON rents FIELDS geometry UNIQUE"
+        },
+        {
+          "name": "unique_rent_name",
+          "define": "DEFINE INDEX unique_rent_name ON rents FIELDS name, level UNIQUE"
+        }
+      ]
     },
     {
       "name": "shops",
@@ -881,7 +890,12 @@
         }
       ],
       "events": [],
-      "indexes": []
+      "indexes": [
+        {
+          "name": "unique_shops",
+          "define": "DEFINE INDEX unique_shops ON shops FIELDS area UNIQUE"
+        }
+      ]
     },
     {
       "name": "zones",
@@ -937,21 +951,7 @@
       "indexes": []
     }
   ],
-  "functions": [
-    {
-      "name": "fn::get_tables",
-      "define": "DEFINE FUNCTION fn::get_tables() -> array<string> { LET $info = (INFO FOR DATABASE); LET $out = []; FOR $table IN object::keys($info.tables) { LET $definition = $info.tables[$table]; LET $definition = string::words($definition); LET $filter = $definition.find_index('TYPE'); array::add($out, { name: $table, type: $definition[$filter + 1] }); }; RETURN $out; } COMMENT '' PERMISSIONS FULL",
-      "args": [],
-      "returns": {
-        "kind": "array",
-        "inner": {
-          "kind": "primitive",
-          "name": "string"
-        },
-        "max": null
-      }
-    }
-  ],
+  "functions": [],
   "params": [],
   "analyzers": [],
   "accesses": [],
@@ -960,14 +960,15 @@
     {
       "name": "draft",
       "define": "DEFINE BUCKET draft BACKEND 'memory' PERMISSIONS FULL"
-    },
-    {
-      "name": "images",
-      "define": "DEFINE BUCKET images BACKEND 'file:C:/Users/5q/gits/map/data/bucket' PERMISSIONS FULL"
     }
   ],
   "sequences": [],
   "configs": [],
   "models": [],
-  "users": []
+  "users": [
+    {
+      "name": "asdf",
+      "define": "DEFINE USER asdf ON DATABASE PASSHASH '[REDACTED]' ROLES VIEWER DURATION FOR TOKEN 1h, FOR SESSION NONE"
+    }
+  ]
 }
