@@ -13,9 +13,11 @@ import type {
 	ResolvedEntityDisplay,
 	ResolvedField
 } from '$lib/config/types';
+import type { SelectOption } from '$lib/option-types';
 import {
 	buildLabelIndex,
 	displayPathSegments,
+	formatRecordOption,
 	recordLinkFields,
 	tableOfId,
 	type RecordLabelIndex,
@@ -29,8 +31,11 @@ export type RecordLabelLoadResult = {
 	labels: RecordLabelIndex;
 };
 
-/** A selectable record-link option for add-row forms. */
-export type RecordOption = { id: string; label: string };
+/**
+ * Selectable record-link option for add-row / inline pickers.
+ * Multi-part display recipes become `{ label, group, itemLabel }` via formatRecordOption.
+ */
+export type RecordOption = SelectOption;
 
 /**
  * Load every row of the record-link target tables on an entity, formatted as
@@ -113,18 +118,23 @@ export async function loadRecordOptions(
 		}
 	}
 
-	const labels = buildLabelIndex(store, config);
-
 	for (const field of linkFields) {
 		const targets = new Set(field.recordTargets ?? []);
 		const options: RecordOption[] = [];
-		for (const [id, label] of labels) {
+		for (const id of store.keys()) {
 			const table = tableOfId(id);
-			if (table && targets.has(table)) {
-				options.push({ id, label: label || id });
-			}
+			if (!table || !targets.has(table)) continue;
+			const display = resolveDisplayForStoredId(id, [field], entityByName.get(table), config);
+			options.push(formatRecordOption(id, display, store));
 		}
-		options.sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true }));
+		options.sort((a, b) => {
+			const ga = a.group ?? '';
+			const gb = b.group ?? '';
+			if (ga !== gb) return ga.localeCompare(gb, undefined, { numeric: true });
+			const la = a.itemLabel ?? a.label;
+			const lb = b.itemLabel ?? b.label;
+			return la.localeCompare(lb, undefined, { numeric: true });
+		});
 		out[field.name] = options;
 	}
 

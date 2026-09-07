@@ -10,6 +10,7 @@ import type {
 	ResolvedEntityDisplay,
 	ResolvedField
 } from '$lib/config/types';
+import type { SelectOption } from '$lib/option-types';
 import { normalizeRecordId } from './to-table';
 
 /** id (`table:key`) → plain row object (may still contain RecordId-like values). */
@@ -24,25 +25,47 @@ const DEFAULT_SEP = ' · ';
  * Format one record id using a display recipe and related rows in the store.
  * Missing hops / empty parts fall back toward the id string.
  */
-export function formatRecordLabel(
-	id: string,
-	display: ResolvedEntityDisplay | undefined,
-	store: RecordStore
-): string {
-	if (!id) return '';
-	if (!display || display.parts.length === 0) return id;
-
-	const sep = display.sep ?? DEFAULT_SEP;
-	const chunks: string[] = [];
-
-	for (const part of display.parts) {
-		const text = resolvePathText(id, part.path, store);
-		if (text != null && text !== '') chunks.push(text);
+	export function formatRecordLabel(
+		id: string,
+		display: ResolvedEntityDisplay | undefined,
+		store: RecordStore
+	): string {
+		return formatRecordOption(id, display, store).label;
 	}
 
-	if (chunks.length === 0) return id;
-	return chunks.join(sep);
-}
+	/**
+	 * Build a picker option from a display recipe.
+	 *
+	 * - `label` — full joined text for grid cells / optionsMap
+	 * - multi-part recipes (2+ paths) with a resolved first path also set:
+	 *   - `group` = first path text
+	 *   - `itemLabel` = remaining paths (combo list text, no group echo)
+	 */
+	export function formatRecordOption(
+		id: string,
+		display: ResolvedEntityDisplay | undefined,
+		store: RecordStore
+	): SelectOption {
+		if (!id) return { id: '', label: '' };
+		if (!display || display.parts.length === 0) return { id, label: id };
+
+		const sep = display.sep ?? DEFAULT_SEP;
+		const texts = display.parts.map((part) => resolvePathText(id, part.path, store));
+		const present = texts.map((t) => (t != null && t !== '' ? t : null));
+		const labelChunks = present.filter((t): t is string => t != null);
+		const label = labelChunks.length > 0 ? labelChunks.join(sep) : id;
+
+		if (display.parts.length < 2) return { id, label };
+
+		// First path → group heading; rest → list item (avoids "Room / Room · Board").
+		const group = present[0];
+		if (group == null) return { id, label };
+
+		const rest = present.slice(1).filter((t): t is string => t != null);
+		if (rest.length === 0) return { id, label };
+
+		return { id, label, group, itemLabel: rest.join(sep) };
+	}
 
 /**
  * Resolve display recipe for a FK field: column override → target entity.display.

@@ -6,33 +6,64 @@
  * - Keep known top-level buckets when they are plain objects / arrays
  * - Do **not** deep-reject unknown nested keys (pass-through for future fields)
  * - Soft-fail only on non-JSON / non-object roots
- *
- * Types in `types.ts` stay the documented contract; this module is the runtime gate.
  */
 
-import type {
-	AppConfigOverlay,
-	EdgeOverlay,
-	EntityOverlay,
-	GraphOverlay,
-	MapOverlay,
-	SearchOverlay
-} from './types';
+import { z } from 'zod';
+import type { AppConfigOverlay, EntityOverlay } from './types';
 
 export const OVERLAY_DOC_ID = 'app_config:main';
 
+const sortKeySchema = z.object({ field: z.string(), dir: z.enum(['asc', 'desc']).optional() });
+const sortSchema = z.union([z.string(), sortKeySchema, z.array(z.union([z.string(), sortKeySchema]))]);
+
+/** Drop non-string entries while keeping the array contract. */
+const stringListSchema = z
+	.array(z.unknown())
+	.transform((list) => list.filter((value): value is string => typeof value === 'string'));
+
+const BUCKET_KEYS = ['entities', 'edges', 'graph', 'map', 'search'] as const;
+const BUCKET_MESSAGES: Record<(typeof BUCKET_KEYS)[number], string> = {
+	entities: 'entities must be an object keyed by table name',
+	edges: 'edges must be an object keyed by relation table',
+	graph: 'graph must be an object',
+	map: 'map must be an object',
+	search: 'search must be an object'
+};
+
+/**
+ * Single source of truth for the overlay root. Unknown keys pass through;
+ * `id` (Surreal) and `version` are normalized away, and known buckets keep
+ * their existing nested shape (still evolving).
+ */
+const overlaySchema = z
+	.object({
+		version: z.union([z.literal(1), z.literal('1')]).optional(),
+		excludeTables: stringListSchema.optional(),
+		entities: z.record(z.string(), z.unknown()).optional(),
+		edges: z.record(z.string(), z.unknown()).optional(),
+		graph: z.record(z.string(), z.unknown()).optional(),
+		map: z.record(z.string(), z.unknown()).optional(),
+		search: z.record(z.string(), z.unknown()).optional()
+	})
+	.passthrough()
+	.transform(({ id: _id, version: _version, ...rest }) => ({ version: 1 as const, ...rest }));
+
 export type OverlayParseResult =
-	| { ok: true; overlay: AppConfigOverlay }
-	| { ok: false; message: string };
+	{ ok: true; overlay: AppConfigOverlay } | { ok: false; message: string };
 
 /** Empty starter document for a missing overlay row. */
 export function emptyOverlay(): AppConfigOverlay {
 	return { version: 1 };
 }
 
-/** Deep clone suitable for editor local state. */
-export function cloneOverlay(overlay: AppConfigOverlay): AppConfigOverlay {
-	return structuredClone(overlay);
+/** Deep clone suitable for editor local state. Never returns null/undefined. */
+export function cloneOverlay(overlay: AppConfigOverlay | null | undefined): AppConfigOverlay {
+	if (overlay == null || typeof overlay !== 'object') return emptyOverlay();
+	try {
+		return structuredClone(overlay);
+	} catch {
+		return emptyOverlay();
+	}
 }
 
 /** Stable pretty JSON for the editor / form payload. */
@@ -63,7 +94,7 @@ export function parseOverlayJson(text: string): OverlayParseResult {
 
 /**
  * Soft-parse an unknown value (form payload, DB row, JSON) into AppConfigOverlay.
- * Strips Surreal `id` and non-plain values at the root; keeps nested unknowns.
+ * Strips Surreal `id`; keeps unknown top-level and nested keys.
  */
 export function softParseOverlay(raw: unknown): OverlayParseResult {
 	if (raw == null) {
@@ -79,69 +110,42 @@ export function softParseOverlay(raw: unknown): OverlayParseResult {
 		return softParseOverlay(raw[0]);
 	}
 
-	if (!isPlainObject(raw)) {
+	if (typeof raw !== 'object') {
 		return { ok: false, message: 'Overlay must be a JSON object' };
 	}
 
-	const versionRaw = raw.version;
-	if (versionRaw != null && versionRaw !== 1 && versionRaw !== '1') {
-		return { ok: false, message: `Unsupported overlay version: ${String(versionRaw)}` };
+	const parsed = overlaySchema.safeParse(compactOverlay(raw as Record<string, unknown>));
+	if (!parsed.success) {
+		return { ok: false, message: overlayErrorMessage(raw as Record<string, unknown>, parsed.error) };
 	}
 
-	const overlay: AppConfigOverlay = { version: 1 };
+	return { ok: true, overlay: parsed.data as AppConfigOverlay };
+}
 
-	if (raw.excludeTables != null) {
-		if (!Array.isArray(raw.excludeTables)) {
-			return { ok: false, message: 'excludeTables must be an array of strings' };
-		}
-		overlay.excludeTables = raw.excludeTables.filter((t): t is string => typeof t === 'string');
+/** Drop nullish known keys so `.optional()` stays strict but lenient. */
+function compactOverlay(raw: Record<string, unknown>): Record<string, unknown> {
+	const known = new Set<string>(['version', 'excludeTables', ...BUCKET_KEYS]);
+	const out: Record<string, unknown> = {};
+	for (const [key, value] of Object.entries(raw)) {
+		if (value == null && known.has(key)) continue;
+		out[key] = value;
 	}
+	return out;
+}
 
-	if (raw.entities != null) {
-		if (!isPlainObject(raw.entities)) {
-			return { ok: false, message: 'entities must be an object keyed by table name' };
-		}
-		// Pass through nested shape — entity fields still evolving.
-		overlay.entities = raw.entities as Record<string, EntityOverlay>;
+function overlayErrorMessage(raw: Record<string, unknown>, error: z.ZodError): string {
+	const path = error.issues[0]?.path[0];
+	if (path === 'version') {
+		return `Unsupported overlay version: ${String(raw.version)}`;
 	}
-
-	if (raw.edges != null) {
-		if (!isPlainObject(raw.edges)) {
-			return { ok: false, message: 'edges must be an object keyed by relation table' };
-		}
-		overlay.edges = raw.edges as Record<string, EdgeOverlay>;
+	if (path === 'excludeTables') {
+		return 'excludeTables must be an array of strings';
 	}
-
-	if (raw.graph != null) {
-		if (!isPlainObject(raw.graph)) {
-			return { ok: false, message: 'graph must be an object' };
-		}
-		overlay.graph = raw.graph as GraphOverlay;
+	if (typeof path === 'string' && path in BUCKET_MESSAGES) {
+		return BUCKET_MESSAGES[path as keyof typeof BUCKET_MESSAGES];
 	}
-
-	if (raw.map != null) {
-		if (!isPlainObject(raw.map)) {
-			return { ok: false, message: 'map must be an object' };
-		}
-		overlay.map = raw.map as MapOverlay;
-	}
-
-	if (raw.search != null) {
-		if (!isPlainObject(raw.search)) {
-			return { ok: false, message: 'search must be an object' };
-		}
-		overlay.search = raw.search as SearchOverlay;
-	}
-
-	// Forward-compat: keep unknown top-level keys (except Surreal id).
-		const loose = overlay as AppConfigOverlay & Record<string, unknown>;
-		for (const [key, value] of Object.entries(raw)) {
-			if (key === 'id' || key === 'version' || key in overlay) continue;
-			loose[key] = value;
-		}
-
-		return { ok: true, overlay };
-	}
+	return 'Invalid overlay';
+}
 
 /** Comma / newline separated list → unique non-empty strings. */
 export function parseStringList(text: string): string[] {
@@ -160,6 +164,8 @@ export function formatStringList(values: string[] | undefined): string {
 	return (values ?? []).join(', ');
 }
 
+type SortInput = NonNullable<NonNullable<EntityOverlay['table']>['sort']>;
+
 /**
  * Parse sort text used in the entity table form.
  * - blank → undefined
@@ -167,17 +173,13 @@ export function formatStringList(values: string[] | undefined): string {
  * - multi-line → multi-key
  * - JSON array/object passthrough when it starts with `[` or `{`
  */
-export function parseSortText(text: string): EntityOverlay['table'] extends infer T
-	? T extends { sort?: infer S }
-		? S | undefined
-		: undefined
-	: undefined {
+export function parseSortText(text: string): SortInput | undefined {
 	const trimmed = text.trim();
 	if (!trimmed) return undefined;
 
 	if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
 		try {
-			return JSON.parse(trimmed) as never;
+			return sortSchema.parse(JSON.parse(trimmed)) as SortInput;
 		} catch {
 			// fall through to line parser
 		}
@@ -188,21 +190,20 @@ export function parseSortText(text: string): EntityOverlay['table'] extends infe
 		.map((line) => line.trim())
 		.filter(Boolean)
 		.map((line) => {
-			const parts = line.split(/\s+/);
-			const field = parts[0]!;
-			const dirRaw = (parts[1] ?? 'asc').toLowerCase();
-			const dir = dirRaw === 'desc' ? 'desc' : 'asc';
-			return dir === 'asc' ? field : { field, dir: 'desc' as const };
+			const [field, dirRaw] = line.split(/\s+/);
+			const dir = dirRaw?.toLowerCase() === 'desc' ? 'desc' : 'asc';
+			return dir === 'asc' ? field! : { field: field!, dir: 'desc' as const };
 		});
 
 	if (keys.length === 0) return undefined;
-	if (keys.length === 1) return keys[0] as never;
-	return keys as never;
+	if (keys.length === 1) return keys[0] as SortInput;
+	return keys as SortInput;
 }
 
 export function formatSortText(sort: unknown): string {
 	if (sort == null) return '';
 	if (typeof sort === 'string') return sort;
+
 	if (Array.isArray(sort)) {
 		return sort
 			.map((entry) => {
@@ -216,10 +217,12 @@ export function formatSortText(sort: unknown): string {
 			.filter(Boolean)
 			.join('\n');
 	}
+
 	if (isPlainObject(sort) && typeof sort.field === 'string') {
 		const dir = sort.dir === 'desc' ? ' desc' : '';
 		return `${sort.field}${dir}`;
 	}
+
 	try {
 		return JSON.stringify(sort);
 	} catch {
@@ -238,10 +241,7 @@ export function formatDisplayText(display: EntityOverlay['display'] | undefined)
 }
 
 /** One path → field; multiple paths → parts. Optional sep (keep spaces). */
-export function parseDisplayText(
-	text: string,
-	sep?: string
-): EntityOverlay['display'] | undefined {
+export function parseDisplayText(text: string, sep?: string): EntityOverlay['display'] | undefined {
 	const paths = text
 		.split(/[\n,]/)
 		.map((p) => p.trim())

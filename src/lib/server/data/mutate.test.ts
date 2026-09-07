@@ -83,9 +83,12 @@ describe('writableFields', () => {
 });
 
 describe('coerceScalar', () => {
-	it('returns null for empty optional fields, throws for required', () => {
+	it('returns null for empty/null optional fields, throws for required', () => {
 		expect(coerceScalar(field('d', { optional: true }), '')).toBeNull();
+		expect(coerceScalar(field('d', { optional: true }), null)).toBeNull();
+		expect(coerceScalar(field('d', { optional: true }), undefined)).toBeNull();
 		expect(() => coerceScalar(field('n'), '')).toThrow(/required/);
+		expect(() => coerceScalar(field('n'), null)).toThrow(/required/);
 	});
 
 	it('coerces numbers and rejects non-numeric', () => {
@@ -119,7 +122,9 @@ describe('coercePatch', () => {
 			field('name'),
 			field('room', { type: 'record', recordTargets: ['electric_rooms'] })
 		]);
-		const out = coercePatch(e, { room: 'electric_rooms:r1' }) as { room: { toString: () => string } };
+		const out = coercePatch(e, { room: 'electric_rooms:r1' }) as {
+			room: { toString: () => string };
+		};
 		expect(out.room.toString()).toBe('electric_rooms:r1');
 	});
 });
@@ -130,7 +135,7 @@ describe('validateRecordId', () => {
 		expect(validateRecordId('levels:-2')).toBe('levels:-2');
 	});
 
-	it('rejects malformed ids', () => {
+	it('rejects malformed ids with the public error', () => {
 		expect(() => validateRecordId('no-colon')).toThrow(MutateError);
 		expect(() => validateRecordId(':key')).toThrow(MutateError);
 		expect(() => validateRecordId('table:')).toThrow(MutateError);
@@ -143,7 +148,16 @@ function relation(partial: Partial<ResolvedEdge> = {}): ResolvedEdge {
 		role: 'feeds',
 		in: ['breakers'],
 		out: ['breakers', 'rents'],
-		fields: [{ name: 'cable', label: 'cable', type: 'string', optional: true, hidden: false, readOnly: false }],
+		fields: [
+			{
+				name: 'cable',
+				label: 'cable',
+				type: 'string',
+				optional: true,
+				hidden: false,
+				readOnly: false
+			}
+		],
 		permissions: { create: true, update: true, delete: true, select: true },
 		...partial
 	};
@@ -191,9 +205,7 @@ describe('validateConnectEndpoints', () => {
 
 	it('rejects self-loops and wrong endpoint tables', () => {
 		const rel = relation();
-		expect(() => validateConnectEndpoints(rel, 'breakers:q1', 'breakers:q1')).toThrow(
-			/itself/
-		);
+		expect(() => validateConnectEndpoints(rel, 'breakers:q1', 'breakers:q1')).toThrow(/itself/);
 		expect(() => validateConnectEndpoints(rel, 'boards:b1', 'breakers:q1')).toThrow(
 			/Source must be/
 		);

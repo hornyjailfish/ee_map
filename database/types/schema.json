@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-09-02T12:06:16.0810848Z",
+  "generatedAt": "2026-09-06T05:53:25.836506Z",
   "namespace": "main",
   "database": "main",
   "tables": [
@@ -813,7 +813,12 @@
         }
       ],
       "events": [],
-      "indexes": []
+      "indexes": [
+        {
+          "name": "unique_areas",
+          "define": "DEFINE INDEX unique_areas ON rents FIELDS name, geometry UNIQUE"
+        }
+      ]
     },
     {
       "name": "shops",
@@ -853,18 +858,18 @@
         },
         {
           "name": "area",
-          "define": "DEFINE FIELD area ON shops TYPE record<rents> PERMISSIONS FULL",
+          "define": "DEFINE FIELD area ON shops TYPE record<rents> | none PERMISSIONS FULL",
           "type": {
             "kind": "record",
             "tables": [
               "rents"
             ]
           },
-          "optional": false,
+          "optional": true,
           "flexible": false,
           "readonly": false,
           "hasDefault": false,
-          "rawType": "record<rents>"
+          "rawType": "record<rents> | none"
         },
         {
           "name": "name",

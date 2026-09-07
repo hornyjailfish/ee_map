@@ -3,6 +3,7 @@
 	import type { Component } from 'svelte';
 	import * as Alert from '$lib/components/ui/alert/index.js';
 	import ViewLoadingOverlay from '$lib/components/view/ViewLoadingOverlay.svelte';
+	import GraphView from '$lib/components/graph/GraphView.svelte';
 	import CircleAlertIcon from '@lucide/svelte/icons/circle-alert';
 	import type { AppRole } from '$lib/catalog-types';
 	import { canEdit } from '$lib/roles';
@@ -14,24 +15,28 @@
 	const graph = $derived(data.graph);
 	const error = $derived(data.error);
 	const relation = $derived(data.relation);
+	const crud = $derived(data.crud);
+	const recordOptionsByTable = $derived(data.recordOptionsByTable ?? {});
 	const nodeCount = $derived(graph?.nodes.length ?? 0);
 	const edgeCount = $derived(graph?.edges.length ?? 0);
 	const userRoles = $derived((data.userRoles ?? []) as AppRole[]);
-	/** VIEWER never gets connect handles or write UI. */
+	/** EDITOR and OWNER both edit wires/nodes; VIEWER is read-only. */
 	const roleCanEdit = $derived(canEdit(userRoles));
 
 	type GraphViewProps = {
 		graph: GraphViewModel;
 		canEdit?: boolean;
 		relation?: string | null;
+		crud?: typeof crud;
+		recordOptionsByTable?: typeof recordOptionsByTable;
 	};
-	let GraphView = $state<Component<GraphViewProps> | null>(null);
+	// let GraphView = $state<Component<GraphViewProps> | null>(null);
 
-	if (browser) {
-		void import('$lib/components/graph/GraphView.svelte').then((m) => {
-			GraphView = m.default;
-		});
-	}
+	// if (browser) {
+	// 	void import('$lib/components/graph/GraphView.svelte').then((m) => {
+	// 		GraphView = m.default;
+	// 	});
+	// }
 </script>
 
 <div class="flex h-full min-h-0 w-full flex-col">
@@ -48,7 +53,7 @@
 			</span>
 		{/if}
 		{#if roleCanEdit && relation}
-			<span class="text-xs text-muted-foreground">· connect enabled</span>
+			<span class="text-xs text-muted-foreground">· edit wires</span>
 		{/if}
 	</div>
 
@@ -80,7 +85,7 @@
 				<p>No nodes to display. Check entity rows and graph roles in config.</p>
 			</div>
 		{:else if browser && GraphView}
-			<GraphView {graph} canEdit={roleCanEdit} {relation} />
+			<GraphView {graph} canEdit={roleCanEdit} {relation} {crud} {recordOptionsByTable} />
 		{:else}
 			<ViewLoadingOverlay label="Loading graph canvas…" veil={false} />
 		{/if}

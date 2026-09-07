@@ -111,11 +111,12 @@ export type FieldOverlay = {
 	label?: string;
 	hidden?: boolean;
 	/**
-	 * Column editor:
-	 * - `undefined` / omitted → default editor for field type
-	 * - `false` → non-editable cell
-	 * - `string` → named custom editor key (e.g. `'combobox'` renders a
-	 *   searchable picker in the add-row form, useful for large option lists)
+	 * Column editor key (grid inline + add-row form share resolveFieldEditor):
+	 * - `undefined` / omitted → default for field type
+	 *   (`string`/`number`/`datetime` → `text`, `bool`/`record` → `combo`)
+	 * - `false` → non-editable
+	 * - `string` → registry key (`text`, `combo`, `richselect`, `datepicker`, …)
+	 *   Register components with `registerEditor(key, { inline?, form? })`.
 	 */
 	editor?: false | string;
 	width?: number;
@@ -280,10 +281,10 @@ export type ResolvedField = {
 	hidden: boolean;
 	readOnly: boolean;
 	/**
-	 * Editor policy after merge:
-	 * - `undefined` → use default editor for `type`
+	 * Editor policy after merge (see FieldOverlay.editor):
+	 * - `undefined` → default for `type`
 	 * - `false` → non-editable
-	 * - `string` → named custom editor
+	 * - `string` → built-in or custom editor key
 	 */
 	editor?: false | string;
 	width?: number;

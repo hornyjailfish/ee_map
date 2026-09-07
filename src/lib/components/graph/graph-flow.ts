@@ -4,6 +4,7 @@
  */
 
 import type { ElkNodeSize } from '$lib/transform/to-elk';
+import type { GraphCrudMeta } from '$lib/transform/graph-crud';
 import type { GraphEdge, GraphNode, GraphViewModel } from '$lib/transform/to-graph';
 
 /** Node + layout identity — used for `{#key}` remounts (camera reset OK). */
@@ -43,11 +44,37 @@ export function compoundIds(model: GraphViewModel): Set<string> {
 	return new Set(model.nodes.filter((n) => n.parentId).map((n) => n.parentId as string));
 }
 
+export type GraphNodeUiOpts = {
+	canEdit?: boolean;
+	crud?: GraphCrudMeta | null;
+};
+
+/** Annotate node data with EDITOR toolbar flags (add child / delete). */
+export function withNodeUiFlags(data: GraphNode['data'], opts: GraphNodeUiOpts): GraphNode['data'] {
+	const canEdit = Boolean(opts.canEdit);
+	const table = data.table;
+	const create = opts.crud?.createByParentTable[table];
+	const canAddChild = canEdit && Boolean(create?.canCreate);
+	const canDelete = canEdit && Boolean(opts.crud?.deleteByTable[table]);
+	const next = {
+		...data,
+		canEdit,
+		canAddChild,
+		canDelete
+	};
+	if (canAddChild && create) {
+		next.addChildLabel = create.childRole || create.childLabel;
+	} else {
+		delete next.addChildLabel;
+	}
+	return next;
+}
+
 /**
  * Content-sized SF nodes parked at origin for measure phase.
  * Strips width/height so SF measures leaf content; ensures canConnect on wire endpoints.
  */
-export function toMeasureNodes(model: GraphViewModel): GraphNode[] {
+export function toMeasureNodes(model: GraphViewModel, ui: GraphNodeUiOpts = {}): GraphNode[] {
 	return model.nodes.map((n) => {
 		const role = n.data.role;
 		const canWire = n.connectable === true || role === 'breaker' || role === 'output';
@@ -56,10 +83,13 @@ export function toMeasureNodes(model: GraphViewModel): GraphNode[] {
 			...rest,
 			position: { x: 0, y: 0 },
 			connectable: canWire,
-			data: {
-				...n.data,
-				canConnect: canWire
-			}
+			data: withNodeUiFlags(
+				{
+					...n.data,
+					canConnect: canWire
+				},
+				ui
+			)
 		};
 		return node;
 	});
@@ -78,7 +108,8 @@ export function toFlowEdges(model: GraphViewModel): GraphEdge[] {
  */
 export function toLaidOutNodes(
 	model: GraphViewModel,
-	sizes?: Map<string, ElkNodeSize>
+	sizes?: Map<string, ElkNodeSize>,
+	ui: GraphNodeUiOpts = {}
 ): GraphNode[] {
 	const parents = compoundIds(model);
 
@@ -93,10 +124,13 @@ export function toLaidOutNodes(
 			...rest,
 			position: n.position ?? { x: 0, y: 0 },
 			connectable: canWire,
-			data: {
-				...n.data,
-				canConnect: canWire
-			}
+			data: withNodeUiFlags(
+				{
+					...n.data,
+					canConnect: canWire
+				},
+				ui
+			)
 		};
 
 		if (isCompound && size) {

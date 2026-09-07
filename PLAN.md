@@ -2,7 +2,7 @@
 
 Internal tool for an electrical engineering team. Three views over the same Surreal data and session, driven by a shared configuration layer.
 
-**Status:** config spine + three read views + selection (N10) + table CRUD (C0–C2) + graph wire persist (C3) + overlay admin (N12). Search deferred. Map geom edit (C4) next.  
+**Status:** config spine + three read views + selection (N10) + table CRUD (C0–C2, C1.1 record combobox) + graph wire writes (C3) + overlay admin (N12). Search deferred. Map geom edit (C4) next.  
 **Stack:** SvelteKit + Surreal session/auth + SurrealKit (schema/seed/typegen) + SVAR Grid + Svelte Flow/ELK + OpenLayers.
 
 ---
@@ -18,7 +18,7 @@ Internal tool for an electrical engineering team. Three views over the same Surr
 | Typegen → `src/lib/types/` (SDK interfaces)                        | Done (regenerate after schema edits)          |
 | `app_config` overlay / merge / resolve                             | **N1–N3 done** (merge + live resolve + seed)  |
 | `AppUiState`, view nav, full-page chrome                           | **N4 done**                                   |
-| `/table`, `/graph`, `/map`                                                 | **N5–N8 done** + table writes (C1–C2) + graph wires (C3) |
+| `/table`, `/graph`, `/map`                                                 | **N5–N8 done** + table writes (C1–C2 + C1.1) + graph wires (C3) |
 | Shared focus (`appUi.focusedId`) across views                              | **N10 done**                                  |
 | `/config` overlay editor (OWNER)                                           | **N12 done**                                  |
 | Header search                                                              | **Deferred** (embedding service; no data yet) |
@@ -507,19 +507,22 @@ Resolved entity + rows → to-table → { data, columns } → <Grid />
 | #       | Slice                                       | Outcome                        |
 | ------- | ------------------------------------------- | ------------------------------ |
 | **C0**  | Server mutate module + role gate            | **Done**                       |
-| **C1**  | Table inline edit (SVAR) + patch            | **Done** (scalars; links via add form) |
-| **C2**  | Table add/delete row                        | **Done**                       |
-| **C3**  | Graph: persist `connects` on draw/delete    | **Done** (EDITOR/OWNER only; VIEWER blocked) |
+| **C1**  | Table inline edit (SVAR) + patch            | **Done** (scalars + record combobox) |
+| **C1.1**| Inline record picker + grouped options      | **Done** (combobox; boards group by room) |
+| **C2**  | Table add/delete row                        | **Done** (modal + validation) |
+| **C3**  | Graph: persist `connects` on draw/delete    | **Done** (EDITOR/OWNER; SF edge-id fix; topology-only delete) |
 | **C4**  | Map: geometry edit (vertex drag / assign)   | Spatial ops (optional v1.1)    |
 | **N12** | Light overlay admin UI (`/config`, OWNER)   | **Done** — soft overlay editor |
 
 ### Immediate coding focus
 
 ```text
-C4 or C1.1 (inline record picker)
+C4 (map geometry edit)
 ```
 
 Table + graph writes are live. VIEWER is read-only on all write seams (`assertCanEdit`).
+Add-row always uses a validation modal. Record FKs use the registered `combobox` editor
+(inline + form) with Command groups when the target display recipe is multi-part.
 
 ### CRUD design (toward C0–C4)
 

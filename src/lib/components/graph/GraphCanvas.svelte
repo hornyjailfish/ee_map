@@ -2,6 +2,7 @@
 	/**
 	 * One mount per node/layout identity (parent `{#key structureKey}`).
 	 * Wire persist is lazy: optimistic UI + server id swap, no invalidate on success.
+	 * Edge Delete is topology-only; domain node delete goes through the node toolbar.
 	 */
 	import {
 		SvelteFlow,
@@ -9,11 +10,11 @@
 		Controls,
 		MiniMap,
 		Panel,
-		addEdge,
 		type Connection,
 		type Edge
 	} from '@xyflow/svelte';
 	import '@xyflow/svelte/dist/style.css';
+	import { invalidateAll } from '$app/navigation';
 	import NetworkIcon from '@lucide/svelte/icons/network';
 	import CircleAlertIcon from '@lucide/svelte/icons/circle-alert';
 	import { ApiError, postFormAction } from '$lib/client/http';
@@ -21,12 +22,20 @@
 	import { nodeTypes } from '$lib/client/registries/nodes';
 	import { edgeTypes } from '$lib/client/registries/edges';
 	import { appUi } from '$lib/client/state/app-ui.svelte';
+	import type { EditorOption } from '$lib/client/editors';
 	import * as Alert from '$lib/components/ui/alert/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Spinner } from '$lib/components/ui/spinner/index.js';
+	import AddRowModal from '$lib/components/table/AddRowModal.svelte';
+	import type { GraphChildCreateSpec, GraphCrudMeta } from '$lib/transform/graph-crud';
 	import type { GraphEdge, GraphNode, GraphViewModel } from '$lib/transform/to-graph';
 	import { graphEdgeSignature, toFlowEdges, toMeasureNodes } from './graph-flow';
 	import GraphLayoutRunner from './GraphLayoutRunner.svelte';
+	import {
+		setGraphNodeActions,
+		type GraphNodeDeleteRef,
+		type GraphNodeParentRef
+	} from './graph-node-actions';
 
 	type Props = {
 		graph: GraphViewModel;
@@ -34,15 +43,29 @@
 		canEdit?: boolean;
 		/** Relation table for connect/disconnect actions. */
 		relation?: string | null;
+		/** Node create/delete gates from config + STRUCTURE. */
+		crud?: GraphCrudMeta | null;
+		/** Record-link picker options keyed by child table → field name. */
+		recordOptionsByTable?: Record<string, Record<string, EditorOption[]>>;
 	};
 
-	let { graph, canEdit = false, relation = null }: Props = $props();
+	let {
+		graph,
+		canEdit = false,
+		relation = null,
+		crud = null,
+		recordOptionsByTable = {}
+	}: Props = $props();
+
+	const nodeUi = $derived({ canEdit, crud });
 
 	type Phase = 'measuring' | 'layouting' | 'ready';
 
 	// Mount-time only — parent `{#key structureKey}` remounts on node/layout change (not wires).
 	// svelte-ignore state_referenced_locally (intentional: capture initial measure snapshot)
-	let nodes = $state.raw<GraphNode[]>(applyNodeSelection(toMeasureNodes(graph), appUi.focusedId));
+	let nodes = $state.raw<GraphNode[]>(
+		applyNodeSelection(toMeasureNodes(graph, { canEdit, crud }), appUi.focusedId)
+	);
 	// svelte-ignore state_referenced_locally (intentional: capture initial measure snapshot)
 	let edges = $state.raw<GraphEdge[]>(toFlowEdges(graph));
 	let phase = $state<Phase>('measuring');
@@ -54,6 +77,87 @@
 	/** Last server edge set we applied (skip no-op / mount double-apply). */
 	// svelte-ignore state_referenced_locally (intentional: baseline for this mount)
 	let lastEdgeSig = graphEdgeSignature(graph);
+
+	/** Add-child modal — same form as table AddRowModal. */
+	let addOpen = $state(false);
+	let addParent = $state<GraphNodeParentRef | null>(null);
+	let addSpec = $state<GraphChildCreateSpec | null>(null);
+	let addSubmitting = $state(false);
+	let addError = $state<string | null>(null);
+
+	const addInitialValues = $derived.by((): Record<string, string> => {
+		if (!addSpec || !addParent) return {};
+		return { [addSpec.parentField]: addParent.id };
+	});
+	const addLockedFields = $derived(addSpec ? [addSpec.parentField] : []);
+	const addRecordOptions = $derived(
+		addSpec ? (recordOptionsByTable[addSpec.childTable] ?? {}) : {}
+	);
+	const addTitle = $derived(
+		addSpec ? `Add row to ${addSpec.childLabel}` : 'Add row'
+	);
+	const addDescription = $derived(
+		addParent
+			? `Under ${addParent.label}. Parent link is pre-filled.`
+			: 'Fill required fields, then create the record.'
+	);
+
+	setGraphNodeActions({
+		requestAddChild,
+		requestDeleteNode
+	});
+
+	function requestAddChild(parent: GraphNodeParentRef) {
+		if (!canEdit || !crud) return;
+		const spec = crud.createByParentTable[parent.table];
+		if (!spec?.canCreate) return;
+		addParent = parent;
+		addSpec = spec;
+		addError = null;
+		writeError = null;
+		addOpen = true;
+	}
+
+	async function submitAddChild(values: Record<string, string>) {
+		if (!addSpec || !addParent || addSubmitting) return;
+		try {
+			addSubmitting = true;
+			addError = null;
+			writeError = null;
+			// Ensure parent FK is always present even if locked field was omitted.
+			const payload: Record<string, string> = {
+				...values,
+				[addSpec.parentField]: addParent.id
+			};
+			const result = await postFormAction<{ id?: string }>('addNode', {
+				table: addSpec.childTable,
+				...payload
+			});
+			addOpen = false;
+			await invalidateAll();
+			if (result.id) appUi.focusRecord(result.id);
+		} catch (err) {
+			addError = formatWriteError(err, 'Failed to create node');
+		} finally {
+			addSubmitting = false;
+		}
+	}
+
+	async function requestDeleteNode(node: GraphNodeDeleteRef) {
+		if (!canEdit || !crud?.deleteByTable[node.table] || writePending) return;
+		if (!confirm(`Delete ${node.label} (${node.id})?`)) return;
+		try {
+			writePending = true;
+			writeError = null;
+			await postFormAction('deleteNode', { table: node.table, id: node.id });
+			if (appUi.focusedId === node.id) appUi.focusRecord(null);
+			await invalidateAll();
+		} catch (err) {
+			writeError = formatWriteError(err, 'Failed to delete node');
+		} finally {
+			writePending = false;
+		}
+	}
 
 	function onLayoutStart() {
 		phase = 'layouting';
@@ -111,7 +215,8 @@
 		// Prefer server ids; keep any local-only persisted edges (lazy connect not yet in load).
 		const serverIds = new Set(serverEdges.map((e) => e.id));
 		const localOnly = edges.filter(
-			(e) => !e.id.startsWith('tmp:') && !serverIds.has(e.id) && !serverPairs.has(`${e.source}>${e.target}`)
+			(e) =>
+				!e.id.startsWith('tmp:') && !serverIds.has(e.id) && !serverPairs.has(`${e.source}>${e.target}`)
 		);
 		edges = [...serverEdges, ...localOnly, ...keepTmp];
 	});
@@ -145,6 +250,64 @@
 		return canWirePair(source, target);
 	}
 
+	/** Same source/target pair (handles optional). */
+	function sameEndpoints(
+		a: {
+			source?: string | null;
+			target?: string | null;
+			sourceHandle?: string | null;
+			targetHandle?: string | null;
+		},
+		b: {
+			source?: string | null;
+			target?: string | null;
+			sourceHandle?: string | null;
+			targetHandle?: string | null;
+		}
+	): boolean {
+		return (
+			a.source === b.source &&
+			a.target === b.target &&
+			(a.sourceHandle ?? null) === (b.sourceHandle ?? null) &&
+			(a.targetHandle ?? null) === (b.targetHandle ?? null)
+		);
+	}
+
+	/** Pending optimistic edge id (never a Surreal record id). */
+	function makeTmpEdgeId(source: string, target: string): string {
+		return `tmp:${source}->${target}:${Date.now()}`;
+	}
+
+	function isTmpEdgeId(id: string | undefined | null): boolean {
+		return typeof id === 'string' && id.startsWith('tmp:');
+	}
+
+	/**
+	 * SF adds the edge *before* onconnect (Handle → store.addEdge).
+	 * Stamp a tmp id + relation metadata here so we never keep the default
+	 * `xy-edge__…` id that fails relation delete validation.
+	 */
+	function onbeforeconnect(connection: Connection): GraphEdge | false {
+		if (!canEdit || !relation) return false;
+		const source = connection.source;
+		const target = connection.target;
+		if (!source || !target || !canWirePair(source, target)) return false;
+
+		return {
+			...connection,
+			id: makeTmpEdgeId(source, target),
+			data: { table: relation, role: 'feeds', pending: true }
+		};
+	}
+
+	/** Find the edge SF just added (by tmp id or endpoints). */
+	function findEdgeForConnection(connection: Connection): GraphEdge | undefined {
+		const pending = edges.find((e) => isTmpEdgeId(e.id) && sameEndpoints(e, connection));
+		if (pending) return pending;
+		return edges.find((e) => sameEndpoints(e, connection));
+	}
+
+	/** Persist a newly drawn wire; promote tmp id → Surreal relation id. */
 	async function onconnect(connection: Connection) {
 		// Defense in depth: VIEWER never reaches here with wireEnabled, but bail anyway.
 		if (!canEdit || !relation) return;
@@ -153,17 +316,22 @@
 		if (!source || !target) return;
 		if (!canWirePair(source, target)) {
 			writeError = 'Invalid connection endpoints';
+			edges = edges.filter((e) => !sameEndpoints(e, connection));
 			return;
 		}
 
-		const tmpId = `tmp:${source}->${target}:${Date.now()}`;
-		edges = addEdge(
-			{
-				...connection,
-				id: tmpId,
-				data: { table: relation, role: 'feeds', pending: true }
-			},
-			edges
+		const local = findEdgeForConnection(connection);
+		const tmpId = local?.id ?? makeTmpEdgeId(source, target);
+
+		// Ensure the optimistic edge carries relation metadata even if SF path differed.
+		edges = edges.map((e) =>
+			sameEndpoints(e, connection)
+				? {
+						...e,
+						id: isTmpEdgeId(e.id) ? e.id : tmpId,
+						data: { table: relation, role: 'feeds', pending: true }
+					}
+				: e
 		);
 
 		try {
@@ -176,14 +344,13 @@
 			});
 			const realId = typeof result.id === 'string' && result.id ? result.id : null;
 			if (!realId) {
-				// Persist worked but no id — drop optimistic edge rather than keep a fake id.
-				edges = edges.filter((e) => e.id !== tmpId);
+				edges = edges.filter((e) => e.id !== tmpId && !sameEndpoints(e, connection));
 				writeError = 'Connection saved but server returned no edge id';
 				return;
 			}
 			// Promote tmp → real record id; leave camera alone (no invalidate).
 			edges = edges.map((e) =>
-				e.id === tmpId
+				e.id === tmpId || (isTmpEdgeId(e.id) && sameEndpoints(e, connection))
 					? {
 							...e,
 							id: realId,
@@ -193,31 +360,52 @@
 			);
 		} catch (err) {
 			writeError = formatWriteError(err, 'Failed to save connection');
-			edges = edges.filter((e) => e.id !== tmpId);
+			edges = edges.filter((e) => e.id !== tmpId && !sameEndpoints(e, connection));
 		} finally {
 			writePending = false;
 		}
 	}
 
-	async function ondelete({ nodes: _nodes, edges: deleted }: { nodes: GraphNode[]; edges: Edge[] }) {
+	/** Relation record id for disconnect — never send xy-edge / tmp ids to the server. */
+	function relationEdgeId(edge: GraphEdge, fallbackRelation: string): string | null {
+		const id = String(edge.id ?? '');
+		if (!id || isTmpEdgeId(id)) return null;
+		const colon = id.indexOf(':');
+		if (colon <= 0) return null;
+		const table = id.slice(0, colon);
+		const expected =
+			typeof edge.data?.table === 'string' && edge.data.table ? edge.data.table : fallbackRelation;
+		return table === expected ? id : null;
+	}
+
+	async function ondelete({ edges: deleted }: { nodes: GraphNode[]; edges: Edge[] }) {
 		if (!canEdit || !relation || deleted.length === 0) return;
 
-		const persisted = deleted.filter((e) => e.id && !String(e.id).startsWith('tmp:')) as GraphEdge[];
-		if (persisted.length === 0) return;
-
-		// SF already removed them from `edges`; keep a snapshot to restore on failure.
-		const snapshot = persisted.map((e) => ({ ...e, data: e.data ? { ...e.data } : undefined }));
+		const edgeList = deleted as GraphEdge[];
+		// SF already removed them from `edges`; snapshot for restore on failure.
+		const snapshot = edgeList.map((e) => ({
+			...e,
+			data: e.data ? { ...e.data } : undefined
+		}));
 
 		try {
 			writePending = true;
 			writeError = null;
-			for (const edge of persisted) {
+
+			for (const edge of edgeList) {
+				if (isTmpEdgeId(edge.id)) continue;
 				const edgeRelation =
-					typeof edge.data?.table === 'string' ? edge.data.table : relation;
-				await postFormAction('disconnect', {
-					relation: edgeRelation,
-					id: String(edge.id)
-				});
+					typeof edge.data?.table === 'string' && edge.data.table ? edge.data.table : relation;
+				if (!edgeRelation) {
+					throw new Error('No relation configured for edge delete');
+				}
+				const id = relationEdgeId(edge, edgeRelation);
+				if (!id) {
+					throw new Error(
+						`Cannot delete edge '${edge.id}': missing Surreal relation id (draw may not have finished saving)`
+					);
+				}
+				await postFormAction('disconnect', { relation: edgeRelation, id });
 			}
 			// Success: stay lazy — load data catches up on next navigation.
 		} catch (err) {
@@ -230,17 +418,21 @@
 		}
 	}
 
-	/** Topology-only: edges when editable; never delete nodes from the canvas. */
+	/**
+	 * Topology-only: Delete never removes domain nodes from the canvas.
+	 * Shared focus marks nodes selected, so SF would otherwise include them —
+	 * strip nodes and only honor explicitly selected edges.
+	 */
 	async function onbeforedelete({
-		nodes: delNodes,
 		edges: delEdges
 	}: {
 		nodes: GraphNode[];
 		edges: Edge[];
-	}): Promise<boolean> {
+	}): Promise<boolean | { nodes: GraphNode[]; edges: Edge[] }> {
 		if (!canEdit || !relation) return false;
-		if (delNodes.length > 0) return false;
-		return delEdges.length > 0;
+		const edgesOnly = delEdges.filter((e) => e.selected);
+		if (edgesOnly.length === 0) return false;
+		return { nodes: [], edges: edgesOnly };
 	}
 
 	const busy = $derived(phase !== 'ready');
@@ -321,6 +513,7 @@
 		{isValidConnection}
 		proOptions={{ hideAttribution: true }}
 		{onnodeclick}
+		{onbeforeconnect}
 		{onconnect}
 		{onbeforedelete}
 		{ondelete}
@@ -328,6 +521,7 @@
 	>
 		<GraphLayoutRunner
 			graph={layoutGraph}
+			{nodeUi}
 			{layoutRequest}
 			{onLayoutStart}
 			{onLayoutDone}
@@ -354,12 +548,25 @@
 		</Panel>
 
 		<Background gap={18} size={1} />
-		<Controls showLock={false} />
-		<MiniMap pannable zoomable class="bg-card!" />
-	</SvelteFlow>
-</div>
+					<Controls showLock={false} />
+					<MiniMap pannable zoomable class="bg-card!" />
+				</SvelteFlow>
 
-<style>
+				<AddRowModal
+							bind:open={addOpen}
+							title={addTitle}
+							description={addDescription}
+							fields={addSpec?.fields ?? []}
+							recordOptions={addRecordOptions}
+							initialValues={addInitialValues}
+							lockedFields={addLockedFields}
+							submitting={addSubmitting}
+							error={addError}
+							onSubmit={submitAddChild}
+						/>
+			</div>
+
+			<style>
 	.graph-canvas :global(.svelte-flow) {
 		height: 100%;
 		width: 100%;

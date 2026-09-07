@@ -112,11 +112,11 @@ export function assertCanUnrelate(relation: ResolvedEdge): void {
 
 /**
  * Coerce a raw client value for a scalar/record field.
- * Empty string → `null` for optional fields.
+ * Empty / null / undefined → DB `null` for optional fields (None in combo editors).
  */
 export function coerceScalar(field: ResolvedField, raw: unknown): unknown {
-	if (raw === '' || raw === undefined) {
-		if (field.optional) return null;
+	if (raw === '' || raw === undefined || raw === null) {
+		if (field.optional) return undefined;
 		throw new MutateError(400, 'required_field', `Field '${field.name}' is required`);
 	}
 
@@ -415,11 +415,39 @@ function coerceRelationMeta(
 }
 
 function normalizeRecordIdFromRow(row: Record<string, unknown> | undefined | null): string {
-	if (!row) return '';
+	if (!row || typeof row !== 'object') return '';
 	const id = row.id;
-	if (typeof id === 'string') return id;
-	if (id && typeof id === 'object' && 'toString' in id) {
-		return String((id as { toString: () => string }).toString());
+	if (id == null) return '';
+	if (typeof id === 'string') return id.trim();
+	if (typeof id !== 'object') return String(id);
+
+	// Surreal RecordId instances expose toString(); prefer it over [object Object].
+	const toString = (id as { toString?: unknown }).toString;
+	if (typeof toString === 'function' && toString !== Object.prototype.toString) {
+		const value = (toString as () => unknown).call(id);
+		if (typeof value === 'string' && value && value !== '[object Object]') return value;
+	}
+
+	// Plain { tb, id } shape from some drivers / JSON paths.
+	const shape = id as { tb?: unknown; id?: unknown };
+	if (typeof shape.tb === 'string' && shape.id != null) {
+		const key = recordKeyString(shape.id);
+		if (key) return `${shape.tb}:${key}`;
+	}
+
+	return String(id);
+}
+
+function recordKeyString(value: unknown): string {
+	if (typeof value === 'string' || typeof value === 'number' || typeof value === 'bigint') {
+		return String(value);
+	}
+	if (typeof value === 'object' && value !== null) {
+		const toString = (value as { toString?: unknown }).toString;
+		if (typeof toString === 'function') {
+			const text = (toString as () => unknown).call(value);
+			if (typeof text === 'string') return text;
+		}
 	}
 	return '';
 }

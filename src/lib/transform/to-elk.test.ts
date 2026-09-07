@@ -68,7 +68,7 @@ describe('toElkGraph', () => {
 		expect(elk.children).toHaveLength(1);
 		const room = elk.children![0]!;
 		const board = room.children![0]!;
-		expect(board.children?.map((c) => c.id).sort()).toEqual(['breakers:q1', 'breakers:q2']);
+		expect(board.children?.map((c) => c.id)).toEqual(['breakers:q1', 'breakers:q2']);
 
 		const q1 = board.children!.find((c) => c.id === 'breakers:q1')!;
 		expect(q1.width).toBe(72);
@@ -143,7 +143,93 @@ describe('toElkGraph', () => {
 		expect(board.layoutOptions?.['elk.padding']).toContain('top=12');
 		expect(board.layoutOptions?.['elk.layered.nodePlacement.bk.fixedAlignment']).toBe('LEFTDOWN');
 	});
+
+	it('sorts breakers naturally (Q0…Q2…Q10) and orders fan-out edges by target', () => {
+		const model: GraphViewModel = {
+			nodes: [
+				{
+					id: 'boards:b1',
+					type: 'board',
+					position: { x: 0, y: 0 },
+					data: { label: 'Board 1', table: 'boards', role: 'board' }
+				},
+				// Intentionally out of order in the model input
+				mkBreaker('q10', 'Q10'),
+				mkBreaker('q2', 'Q2'),
+				mkBreaker('q0', 'Q0'),
+				mkBreaker('q1', 'Q1'),
+				mkBreaker('q11', 'Q11')
+			],
+			edges: [
+				{
+					id: 'connects:c10',
+					source: 'breakers:q0',
+					target: 'breakers:q10',
+					type: 'power',
+					data: { table: 'connects', role: 'feeds' }
+				},
+				{
+					id: 'connects:c2',
+					source: 'breakers:q0',
+					target: 'breakers:q2',
+					type: 'power',
+					data: { table: 'connects', role: 'feeds' }
+				},
+				{
+					id: 'connects:c1',
+					source: 'breakers:q0',
+					target: 'breakers:q1',
+					type: 'power',
+					data: { table: 'connects', role: 'feeds' }
+				},
+				{
+					id: 'connects:c11',
+					source: 'breakers:q0',
+					target: 'breakers:q11',
+					type: 'power',
+					data: { table: 'connects', role: 'feeds' }
+				}
+			],
+			layout: defaultLayout
+		};
+
+		const elk = toElkGraph(model, {
+			sizes: {
+				'breakers:q0': { width: 40, height: 20 },
+				'breakers:q1': { width: 40, height: 20 },
+				'breakers:q2': { width: 40, height: 20 },
+				'breakers:q10': { width: 40, height: 20 },
+				'breakers:q11': { width: 40, height: 20 }
+			}
+		});
+
+		const board = elk.children![0]!;
+		expect(board.children?.map((c) => c.id)).toEqual([
+			'breakers:q0',
+			'breakers:q1',
+			'breakers:q2',
+			'breakers:q10',
+			'breakers:q11'
+		]);
+		expect(elk.edges?.map((e) => e.id)).toEqual([
+			'connects:c1',
+			'connects:c2',
+			'connects:c10',
+			'connects:c11'
+		]);
+	});
 });
+
+function mkBreaker(key: string, label: string) {
+	return {
+		id: `breakers:${key}`,
+		type: 'breaker' as const,
+		position: { x: 0, y: 0 },
+		parentId: 'boards:b1',
+		extent: 'parent' as const,
+		data: { label, table: 'breakers', role: 'breaker' }
+	};
+}
 
 describe('applyElkLayout', () => {
 	const laidOut: ElkNodeLike = {
@@ -185,6 +271,146 @@ describe('applyElkLayout', () => {
 		});
 		expect(result.edges[0]).not.toBe(fixtureModel.edges[0]);
 		expect(result.layout).toEqual(fixtureModel.layout);
+	});
+
+	it('reorders same-layer breakers by natural label (Q0…Q10)', () => {
+		const model: GraphViewModel = {
+			nodes: [
+				{
+					id: 'boards:b1',
+					type: 'board',
+					position: { x: 0, y: 0 },
+					data: { label: 'Board 1', table: 'boards', role: 'board' }
+				},
+				mkBreaker('q0', 'Q0'),
+				mkBreaker('q1', 'Q1'),
+				mkBreaker('q2', 'Q2'),
+				mkBreaker('q10', 'Q10'),
+				mkBreaker('q11', 'Q11')
+			],
+			edges: [],
+			layout: defaultLayout
+		};
+
+		const w = 40;
+		// ELK placed fan-out in wrong label order on the same y layer (slots 0,60,120,180)
+		const laid: ElkNodeLike = {
+			id: 'root',
+			children: [
+				{
+					id: 'boards:b1',
+					x: 0,
+					y: 0,
+					children: [
+						{ id: 'breakers:q0', x: 100, y: 0, width: w, height: 20 },
+						{ id: 'breakers:q10', x: 0, y: 50, width: w, height: 20 },
+						{ id: 'breakers:q2', x: 60, y: 50, width: w, height: 20 },
+						{ id: 'breakers:q1', x: 120, y: 50, width: w, height: 20 },
+						{ id: 'breakers:q11', x: 180, y: 50, width: w, height: 20 }
+					]
+				}
+			]
+		};
+
+		const result = applyElkLayout(model, laid);
+		const byId = Object.fromEntries(result.nodes.map((n) => [n.id, n.position] as const));
+
+		expect(byId['breakers:q0']).toEqual({ x: 100, y: 0 });
+		// Same layer span packed left→right as Q1,Q2,Q10,Q11 (equal widths → original slots)
+		expect(byId['breakers:q1']).toEqual({ x: 0, y: 50 });
+		expect(byId['breakers:q2']).toEqual({ x: 60, y: 50 });
+		expect(byId['breakers:q10']).toEqual({ x: 120, y: 50 });
+		expect(byId['breakers:q11']).toEqual({ x: 180, y: 50 });
+	});
+
+	it('does not reorder differently sized rooms/boards (avoids overlaps)', () => {
+		const model: GraphViewModel = {
+			nodes: [
+				{
+					id: 'electric_rooms:r2',
+					type: 'room',
+					position: { x: 0, y: 0 },
+					data: { label: '1.2', table: 'electric_rooms', role: 'room' }
+				},
+				{
+					id: 'electric_rooms:r1',
+					type: 'room',
+					position: { x: 0, y: 0 },
+					data: { label: '1.1', table: 'electric_rooms', role: 'room' }
+				},
+				{
+					id: 'boards:wide',
+					type: 'board',
+					position: { x: 0, y: 0 },
+					parentId: 'electric_rooms:r1',
+					extent: 'parent',
+					data: { label: 'ЩО-1', table: 'boards', role: 'board' }
+				},
+				{
+					id: 'boards:narrow',
+					type: 'board',
+					position: { x: 0, y: 0 },
+					parentId: 'electric_rooms:r1',
+					extent: 'parent',
+					data: { label: 'ЩО-2', table: 'boards', role: 'board' }
+				},
+				mkBreaker('q0', 'Q0')
+			],
+			edges: [],
+			layout: defaultLayout
+		};
+		// force breaker under wide board for compound detection
+		model.nodes[4] = { ...mkBreaker('q0', 'Q0'), parentId: 'boards:wide' };
+
+		const laid: ElkNodeLike = {
+			id: 'root',
+			children: [
+				// ELK left-to-right: large room first, small room second (not label order)
+				{
+					id: 'electric_rooms:r2',
+					x: 0,
+					y: 0,
+					width: 80,
+					height: 60,
+					children: []
+				},
+				{
+					id: 'electric_rooms:r1',
+					x: 100,
+					y: 0,
+					width: 500,
+					height: 200,
+					children: [
+						// wide board sits left; narrow sits right — label order would swap and overlap
+						{
+							id: 'boards:wide',
+							x: 10,
+							y: 20,
+							width: 300,
+							height: 150,
+							children: [{ id: 'breakers:q0', x: 20, y: 30, width: 40, height: 20 }]
+						},
+						{
+							id: 'boards:narrow',
+							x: 330,
+							y: 20,
+							width: 120,
+							height: 80
+						}
+					]
+				}
+			]
+		};
+
+		const result = applyElkLayout(model, laid);
+		const byId = Object.fromEntries(result.nodes.map((n) => [n.id, n.position] as const));
+
+		// Rooms/boards keep ELK coordinates (no label shuffle)
+		expect(byId['electric_rooms:r2']).toEqual({ x: 0, y: 0 });
+		expect(byId['electric_rooms:r1']).toEqual({ x: 100, y: 0 });
+		expect(byId['boards:wide']).toEqual({ x: 10, y: 20 });
+		expect(byId['boards:narrow']).toEqual({ x: 330, y: 20 });
+		expect(byId['breakers:q0']).toEqual({ x: 20, y: 30 });
 	});
 });
 

@@ -134,6 +134,9 @@ describe('record label load outcome (pure)', () => {
 			{ labels, store, config: cfg }
 		);
 
-		expect(view.data.map((r) => r.board)).toEqual(['ER-A · Main', 'ER-B · Main']);
+		// Cell values stay as record ids so inline editors can patch; labels live on options.
+		expect(view.data.map((r) => r.board)).toEqual(['boards:b1', 'boards:b2']);
+		expect(labels.get('boards:b1')).toBe('ER-A · Main');
+		expect(labels.get('boards:b2')).toBe('ER-B · Main');
 	});
 });

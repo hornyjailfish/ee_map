@@ -2,43 +2,41 @@
 	import { goto, invalidateAll } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { navigating, page } from '$app/state';
-	import type { IApi } from '@svar-ui/grid-store';
 	import * as Alert from '$lib/components/ui/alert/index.js';
-	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import * as Field from '$lib/components/ui/field/index.js';
 	import * as NativeSelect from '$lib/components/ui/native-select/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
-	import { Combobox } from '$lib/components/ui/combobox/index.js';
-	import { Input } from '$lib/components/ui/input/index.js';
 	import { Spinner } from '$lib/components/ui/spinner/index.js';
+	import AddRowModal from '$lib/components/table/AddRowModal.svelte';
 	import ViewLoadingOverlay from '$lib/components/view/ViewLoadingOverlay.svelte';
+	import {
+		editorValueFromDb,
+		ensureEditorsRegistered,
+		NONE_OPTION_ID,
+		resolveFieldEditor,
+		type EditorOption
+	} from '$lib/client/editors';
+
+	// Client-only: wire SVAR inline + form editor components once.
+	ensureEditorsRegistered();
 	import { ApiError, postFormAction } from '$lib/client/http';
 	import { tableOfRecordId } from '$lib/client/selection';
 	import { appUi } from '$lib/client/state/app-ui.svelte';
 	import { columnSortFn } from '$lib/transform/compare';
 	import type { TableColumn, TableRow, TableViewModel } from '$lib/transform/to-table';
-	import { Grid, Willow } from '@svar-ui/svelte-grid';
+	import {
+		Grid,
+		Willow,
+		type IApi,
+		type IColumnConfig,
+		type TMethodsConfig
+	} from '@svar-ui/svelte-grid';
 	import CircleAlertIcon from '@lucide/svelte/icons/circle-alert';
 	import PlusIcon from '@lucide/svelte/icons/plus';
 	import TrashIcon from '@lucide/svelte/icons/trash-2';
 	import type { PageData } from './$types';
 	import { untrack } from 'svelte';
 	import { canEdit } from '$lib/roles';
-
-	/** Named editor key that renders a searchable combobox in the add-row form. */
-	const COMBOBOX_EDITOR = 'combobox';
-
-	/** SVAR column shape with optional inline editor. */
-	type SvarColumn = {
-		id: string;
-		header: string;
-		/** Natural / typed compare via columnSortFn; SVAR passes full rows. */
-		sort?: boolean | ((a: Record<string, unknown>, b: Record<string, unknown>) => -1 | 0 | 1);
-		width?: number;
-		flexgrow?: number;
-		editor?: string;
-		options?: { id: string | number; label: string }[];
-	};
 
 	let { data }: { data: PageData } = $props();
 
@@ -56,7 +54,25 @@
 	const canDelete = $derived(roleCanEdit && (view?.permissions.delete ?? false));
 
 	const svarColumns = $derived(view ? toSvarColumns(view.columns, canUpdate) : []);
-	const gridData = $derived((view?.data ?? []) as TableRow[]);
+	/** Normalize null optional combo cells → '' so optionsMap shows None. */
+	const gridData = $derived.by(() => {
+		const rows = (view?.data ?? []) as TableRow[];
+		if (!view || rows.length === 0) return rows;
+		const nullableChoiceCols = view.columns.filter(
+			(c) => c.optional !== false && (c.valueType === 'record' || c.valueType === 'bool')
+		);
+		if (nullableChoiceCols.length === 0) return rows;
+		return rows.map((row) => {
+			let next: TableRow | null = null;
+			for (const c of nullableChoiceCols) {
+				const raw = row[c.id];
+				if (raw != null) continue;
+				if (!next) next = { ...row };
+				next[c.id] = NONE_OPTION_ID;
+			}
+			return next ?? row;
+		});
+	});
 	const hasRows = $derived(gridData.length > 0);
 
 	let writeError = $state<string | null>(null);
@@ -66,15 +82,8 @@
 
 	/** Add-row modal state. */
 	let addOpen = $state(false);
-	let addValues = $state<Record<string, string>>({});
-	let addErrors = $state<Record<string, string>>({});
 	let addSubmitting = $state(false);
-
-	/** Fields shown in the add-row form (writable scalars + record links). */
-	const addFields = $derived.by(() => {
-		if (!view) return [];
-		return view.columns.filter((c) => isFormField(c));
-	});
+	let addError = $state<string | null>(null);
 
 	const recordOptions = $derived(data.recordOptions ?? {});
 
@@ -100,9 +109,9 @@
 	 */
 	let lastFollowedFocusId: string | null | undefined = undefined;
 
-	function toSvarColumns(cols: TableColumn[], editable: boolean): SvarColumn[] {
+	function toSvarColumns(cols: TableColumn[], editable: boolean): IColumnConfig[] {
 		return cols.map((c) => {
-			const col: SvarColumn = {
+			const col: IColumnConfig = {
 				id: c.id,
 				header: c.header,
 				// Natural numeric-aware compare on every sortable column
@@ -114,46 +123,29 @@
 				// Fill remaining space when entity has no explicit width
 				col.flexgrow = 1;
 			}
-			if (editable) {
-				const editor = editorForColumn(c);
-				if (editor) {
-					col.editor = editor.type;
-					if (editor.options) col.options = editor.options;
-				}
+
+			// Record labels (+ None when optional) so null cells display correctly.
+			const recordOpts = optionsForColumn(c);
+			const editor = resolveFieldEditor(c, recordOpts);
+			if (editor?.options) {
+				col.options = editor.options;
+			} else if (recordOpts) {
+				col.options = recordOpts;
+			}
+
+			// Editor key from field config / type default (components via registerEditor).
+			if (editable && editor) {
+				col.editor = editor.type;
 			}
 			return col;
 		});
 	}
 
-	/** Map a resolved column to an SVAR inline editor (scalar types only). */
-	function editorForColumn(
-		c: TableColumn
-	): { type: string; options?: { id: string | number; label: string }[] } | null {
-		// Combobox is a form-level picker (large option lists), not a grid inline editor.
-		if (c.editor === COMBOBOX_EDITOR) return null;
-		// Explicit overlay editor override wins (a registered custom editor key).
-		if (typeof c.editor === 'string') return { type: c.editor };
-		// Overlay `editor: false` → cell stays non-editable.
-		if (c.editor === false) return null;
-		if (c.readOnly) return null;
-
-		switch (c.valueType) {
-			case 'string':
-				return { type: 'text' };
-			case 'number':
-				return { type: 'text' };
-			case 'bool':
-				return {
-					type: 'combo',
-					options: [
-						{ id: 'true', label: 'true' },
-						{ id: 'false', label: 'false' }
-					]
-				};
-			default:
-				// record / geometry / array / object / unknown — needs a dedicated editor
-				return null;
-		}
+	/** Record-link options for a column (id + label + optional group). */
+	function optionsForColumn(c: TableColumn): EditorOption[] | null {
+		if (c.valueType !== 'record') return null;
+		const opts = recordOptions[c.id];
+		return opts && opts.length > 0 ? opts : null;
 	}
 
 	function switchTable(next: string, opts?: { clearForeignFocus?: boolean }) {
@@ -220,9 +212,8 @@
 			});
 		}
 	}
-
 	/** Grid maps `select-row` → `onselectrow`. */
-	function onselectrow(ev: { id?: string | number }) {
+	function onselectrow(ev: TMethodsConfig['select-row']) {
 		if (applyingExternalSelection) return;
 		const id = ev?.id != null ? String(ev.id) : null;
 		if (!id) return;
@@ -231,14 +222,13 @@
 	}
 
 	/** Inline editor committed a cell → persist via server action, reload on failure. */
-	async function onupdatecell(ev: {
-		id: string | number;
-		column: string | number;
-		value: string | number | Date;
-	}) {
+	async function onupdatecell(ev: TMethodsConfig['update-cell']) {
 		const id = ev?.id != null ? String(ev.id) : '';
 		const column = ev?.column != null ? String(ev.column) : '';
 		if (!id || !column || !view) return;
+
+		// None / cleared combo → '' so FormData + coerceScalar store DB null.
+		const value = editorValueFromDb(ev.value);
 
 		try {
 			writePending = true;
@@ -247,7 +237,7 @@
 				table: view.table,
 				id,
 				field: column,
-				value: ev.value
+				value
 			});
 			await invalidateAll();
 		} catch (err) {
@@ -267,68 +257,30 @@
 		return err instanceof Error ? err.message : fallback;
 	}
 
-	/** A column participates in the add-row form when it is writable and scalar/record. */
-	function isFormField(c: TableColumn): boolean {
-		if (c.id === 'id') return false;
-		if (c.readOnly || c.editor === false) return false;
-		if (c.valueType === 'record') return true;
-		switch (c.valueType) {
-			case 'string':
-			case 'number':
-			case 'bool':
-			case 'datetime':
-				return true;
-			default:
-				return false;
-		}
-	}
-
-	/** Open the add-row modal with a blank, validated form. */
+	/** Open the shared add-row modal. */
 	function openAddRow() {
 		if (!view || !canCreate) return;
-		const values: Record<string, string> = {};
-		for (const c of addFields) values[c.id] = '';
-		addValues = values;
-		addErrors = {};
+		addError = null;
 		writeError = null;
 		addOpen = true;
 	}
 
-	/** Validate required fields; returns false and sets errors when invalid. */
-	function validateAddForm(): boolean {
-		const errors: Record<string, string> = {};
-		for (const c of addFields) {
-			if (c.optional === false && !addValues[c.id]?.trim()) {
-				errors[c.id] = 'Required';
-			}
-		}
-		addErrors = errors;
-		return Object.keys(errors).length === 0;
-	}
-
-	/** Submit the add-row form after validation. */
-	async function submitAddRow() {
+	/** Submit create via table form action. */
+	async function submitAddRow(values: Record<string, string>) {
 		if (!view || addSubmitting) return;
-		if (!validateAddForm()) return;
-
-		// Send only non-empty values (empty optional fields stay unset).
-		const payload: Record<string, unknown> = { table: view.table };
-		for (const c of addFields) {
-			const value = addValues[c.id]?.trim();
-			if (value) payload[c.id] = value;
-		}
-
 		try {
 			addSubmitting = true;
+			addError = null;
 			writeError = null;
-			const result = await postFormAction<{ id?: string }>('addRow', payload);
+			const result = await postFormAction<{ id?: string }>('addRow', {
+				table: view.table,
+				...values
+			});
 			await invalidateAll();
 			addOpen = false;
-			if (result.id) {
-				appUi.focusRecord(result.id);
-			}
+			if (result.id) appUi.focusRecord(result.id);
 		} catch (err) {
-			writeError = formatWriteError(err, 'Failed to add row');
+			addError = formatWriteError(err, 'Failed to add row');
 		} finally {
 			addSubmitting = false;
 		}
@@ -527,116 +479,15 @@
 		{/if}
 	</div>
 
-	<Dialog.Root bind:open={addOpen}>
-		<Dialog.Content class="sm:max-w-md">
-			<Dialog.Header>
-				<Dialog.Title>Add row to {tableLabel(activeTable)}</Dialog.Title>
-				<Dialog.Description>
-					Fill required fields, then create the record.
-				</Dialog.Description>
-			</Dialog.Header>
-
-			{#if addFields.length === 0}
-				<p class="px-1 text-sm text-muted-foreground">
-					No editable fields on this table.
-				</p>
-			{:else}
-				<Field.Group class="gap-3">
-					{#each addFields as c (c.id)}
-						{@const value = addValues[c.id] ?? ''}
-						{@const invalid = Boolean(addErrors[c.id])}
-						<Field.Field data-invalid={invalid ? 'true' : undefined}>
-							<Field.Label for={`add-${c.id}`}>
-								{c.header}
-								{c.optional === false ? ' *' : ''}
-							</Field.Label>
-							{#if c.valueType === 'record' && c.editor === COMBOBOX_EDITOR}
-								<Combobox
-									id={`add-${c.id}`}
-									options={recordOptions[c.id] ?? []}
-									bind:value={addValues[c.id]}
-									onValueChange={() => {
-										if (addErrors[c.id]) addErrors = { ...addErrors, [c.id]: '' };
-									}}
-									aria-invalid={invalid}
-								/>
-							{:else if c.valueType === 'record'}
-								<NativeSelect.Root
-									id={`add-${c.id}`}
-									class="w-full"
-									value={value}
-									onchange={(e) => {
-										const select = e.currentTarget as HTMLSelectElement;
-										addValues = { ...addValues, [c.id]: select.value };
-										if (addErrors[c.id]) addErrors = { ...addErrors, [c.id]: '' };
-									}}
-									aria-invalid={invalid}
-								>
-									<NativeSelect.Option value="">Select…</NativeSelect.Option>
-									{#each recordOptions[c.id] ?? [] as opt (opt.id)}
-										<NativeSelect.Option value={opt.id}>{opt.label}</NativeSelect.Option>
-									{/each}
-								</NativeSelect.Root>
-							{:else if c.valueType === 'bool'}
-								<NativeSelect.Root
-									id={`add-${c.id}`}
-									class="w-full"
-									value={value}
-									onchange={(e) => {
-										const select = e.currentTarget as HTMLSelectElement;
-										addValues = { ...addValues, [c.id]: select.value };
-										if (addErrors[c.id]) addErrors = { ...addErrors, [c.id]: '' };
-									}}
-									aria-invalid={invalid}
-								>
-									<NativeSelect.Option value="">Select…</NativeSelect.Option>
-									<NativeSelect.Option value="true">true</NativeSelect.Option>
-									<NativeSelect.Option value="false">false</NativeSelect.Option>
-								</NativeSelect.Root>
-							{:else}
-								<Input
-									id={`add-${c.id}`}
-									type={c.valueType === 'number' ? 'number' : 'text'}
-									value={value}
-									oninput={(e) => {
-										const input = e.currentTarget as HTMLInputElement;
-										addValues = { ...addValues, [c.id]: input.value };
-										if (addErrors[c.id]) addErrors = { ...addErrors, [c.id]: '' };
-									}}
-									aria-invalid={invalid}
-								/>
-							{/if}
-							{#if invalid}
-								<Field.Error>{addErrors[c.id]}</Field.Error>
-							{/if}
-						</Field.Field>
-					{/each}
-				</Field.Group>
-			{/if}
-
-			{#if writeError}
-				<Alert.Root variant="destructive">
-					<CircleAlertIcon />
-					<Alert.Title>Create failed</Alert.Title>
-					<Alert.Description>{writeError}</Alert.Description>
-				</Alert.Root>
-			{/if}
-
-			<Dialog.Footer>
-				<Dialog.Close>
-					{#snippet child({ props })}
-						<Button variant="outline" {...props}>Cancel</Button>
-					{/snippet}
-				</Dialog.Close>
-				<Button type="button" disabled={addSubmitting} onclick={submitAddRow}>
-					{#if addSubmitting}
-						<Spinner class="size-3.5" data-icon="inline-start" />
-					{/if}
-					Create
-				</Button>
-			</Dialog.Footer>
-		</Dialog.Content>
-	</Dialog.Root>
+	<AddRowModal
+		bind:open={addOpen}
+		title={`Add row to ${tableLabel(activeTable)}`}
+		fields={view?.columns ?? []}
+		{recordOptions}
+		submitting={addSubmitting}
+		error={addError}
+		onSubmit={submitAddRow}
+	/>
 </div>
 
 <style>

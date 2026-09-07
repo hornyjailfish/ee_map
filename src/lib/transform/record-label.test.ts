@@ -5,6 +5,7 @@ import {
 	displayForRecordRef,
 	formatRecordCellValue,
 	formatRecordLabel,
+	formatRecordOption,
 	tableOfId
 } from './record-label';
 
@@ -115,6 +116,40 @@ describe('formatRecordLabel', () => {
 		expect(
 			formatRecordLabel('boards:b1', { parts: [{ path: 'name' }], sep: ' · ' }, store)
 		).toBe('boards:b1');
+	});
+});
+
+describe('formatRecordOption', () => {
+	const boardDisplay = { parts: [{ path: 'room.name' }, { path: 'name' }], sep: ' · ' };
+
+	it('keeps single-path options flat', () => {
+		const store = new Map([['rooms:r1', { id: 'rooms:r1', name: 'ER-A' }]]);
+		expect(
+			formatRecordOption('rooms:r1', { parts: [{ path: 'name' }], sep: ' · ' }, store)
+		).toEqual({ id: 'rooms:r1', label: 'ER-A' });
+	});
+
+	it('splits multi-part recipes into group + itemLabel without duplicating', () => {
+		const store = new Map<string, Record<string, unknown>>([
+			['boards:b1', { id: 'boards:b1', name: 'Main', room: 'electric_rooms:r1' }],
+			['electric_rooms:r1', { id: 'electric_rooms:r1', name: 'ER-A' }]
+		]);
+		expect(formatRecordOption('boards:b1', boardDisplay, store)).toEqual({
+			id: 'boards:b1',
+			label: 'ER-A · Main',
+			group: 'ER-A',
+			itemLabel: 'Main'
+		});
+	});
+
+	it('falls back to flat label when the group hop is missing', () => {
+		const store = new Map<string, Record<string, unknown>>([
+			['boards:b1', { id: 'boards:b1', name: 'Main', room: 'electric_rooms:missing' }]
+		]);
+		expect(formatRecordOption('boards:b1', boardDisplay, store)).toEqual({
+			id: 'boards:b1',
+			label: 'Main'
+		});
 	});
 });
 

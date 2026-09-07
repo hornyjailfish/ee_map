@@ -1,5 +1,6 @@
 import { fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
+import { z } from 'zod';
 import type { ResolvedConfig, ResolvedEntity } from '$lib/config/types';
 import {
 	assertCanEdit,
@@ -16,6 +17,15 @@ import {
 import { resolveAppConfig } from '$lib/server/config';
 import { getUserRoles } from '$lib/server/catalog';
 import { entityByName, toTable, type TableViewModel } from '$lib/transform/to-table';
+
+const updateCellSchema = z.object({
+	table: z.string().default(''),
+	id: z.string().default(''),
+	field: z.string().default(''),
+	value: z.string().nullable().default(null)
+});
+const addRowSchema = z.record(z.string(), z.string());
+const deleteRowSchema = z.object({ table: z.string().default(''), id: z.string().default('') });
 
 export type TableOption = {
 	name: string;
@@ -127,11 +137,13 @@ function failFromError(error: unknown) {
 
 export const actions: Actions = {
 	updateCell: async ({ request, locals, fetch }) => {
-		const data = await request.formData();
-		const table = data.get('table');
-		const id = String(data.get('id') ?? '');
-		const field = String(data.get('field') ?? '');
-		const value = data.get('value');
+		const parsed = updateCellSchema.safeParse(
+			Object.fromEntries((await request.formData()).entries())
+		);
+		if (!parsed.success) {
+			return fail(400, { code: 'invalid_form', message: 'Invalid form data' });
+		}
+		const { table, id, field, value } = parsed.data;
 
 		try {
 			const entity = await resolveForWrite(locals, fetch, table);
@@ -143,13 +155,13 @@ export const actions: Actions = {
 	},
 
 	addRow: async ({ request, locals, fetch }) => {
-		const data = await request.formData();
-		const table = data.get('table');
-		const values: Record<string, unknown> = {};
-		for (const [key, value] of data.entries()) {
-			if (key === 'table') continue;
-			values[key] = value;
+		const parsed = addRowSchema.safeParse(
+			Object.fromEntries((await request.formData()).entries())
+		);
+		if (!parsed.success) {
+			return fail(400, { code: 'invalid_form', message: 'Invalid form data' });
 		}
+		const { table, ...values } = parsed.data;
 
 		try {
 			const entity = await resolveForWrite(locals, fetch, table);
@@ -161,9 +173,13 @@ export const actions: Actions = {
 	},
 
 	deleteRow: async ({ request, locals, fetch }) => {
-		const data = await request.formData();
-		const table = data.get('table');
-		const id = String(data.get('id') ?? '');
+		const parsed = deleteRowSchema.safeParse(
+			Object.fromEntries((await request.formData()).entries())
+		);
+		if (!parsed.success) {
+			return fail(400, { code: 'invalid_form', message: 'Invalid form data' });
+		}
+		const { table, id } = parsed.data;
 
 		try {
 			const entity = await resolveForWrite(locals, fetch, table);

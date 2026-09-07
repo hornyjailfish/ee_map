@@ -23,6 +23,14 @@ export type GraphNodeData = {
 	isSource?: boolean;
 	/** @deprecated prefer canConnect */
 	isTarget?: boolean;
+	/** Client: EDITOR/OWNER — show node toolbar. */
+	canEdit?: boolean;
+	/** Client: can open add-child modal for this parent. */
+	canAddChild?: boolean;
+	/** Client: toolbar label for child entity (e.g. "board"). */
+	addChildLabel?: string;
+	/** Client: can delete this domain node. */
+	canDelete?: boolean;
 	raw?: Record<string, unknown>;
 };
 

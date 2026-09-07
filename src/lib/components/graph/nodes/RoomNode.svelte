@@ -1,13 +1,15 @@
 <script lang="ts">
 	import type { Node, NodeProps } from '@xyflow/svelte';
 	import type { GraphNodeData } from '$lib/transform/to-graph';
+	import GraphNodeToolbar from '../GraphNodeToolbar.svelte';
 
 	type RoomNode = Node<GraphNodeData, 'room'>;
-	let { data, selected }: NodeProps<RoomNode> = $props();
+	let { id, data, selected }: NodeProps<RoomNode> = $props();
 </script>
 
 <!-- No handles: rooms are containers, not edge endpoints. -->
 <div class={['room-node', selected && 'is-selected']}>
+	<GraphNodeToolbar {id} {data} />
 	<div class="room-node__body">
 		<span class="room-node__role">room</span>
 		<span class="room-node__label">{data.label}</span>
@@ -28,7 +30,7 @@
 		min-width: max-content;
 		border-radius: 0.5rem;
 		border: 1px dashed color-mix(in oklab, oklch(0.6 0.12 250) 55%, var(--border, #e5e5e5));
-		background: color-mix(in oklab, oklch(0.6 0.12 250) 8%, var(--muted, #f5f5f5));
+		background: color-mix(in oklab, oklch(0.6 0.12 250) 20%, transparent);
 		color: var(--card-foreground, #171717);
 		box-shadow: 0 1px 2px rgb(0 0 0 / 0.04);
 		font-size: 0.75rem;

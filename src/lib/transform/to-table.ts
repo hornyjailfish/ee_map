@@ -11,7 +11,7 @@ import type {
 	TablePermissions
 } from '$lib/config';
 import { sortRowsByKeys } from './compare';
-import { formatRecordCellValue, type RecordLabelIndex, type RecordStore } from './record-label';
+import type { RecordLabelIndex, RecordStore } from './record-label';
 
 export type TableColumn = {
 	id: string;
@@ -43,11 +43,14 @@ export type TableViewModel = {
 };
 
 export type ToTableOptions = {
-	/** Precomputed id → label (preferred for FK cells). */
+	/**
+	 * Precomputed id → label. Kept for callers/tests; cell values store record ids
+	 * so inline editors can patch. Labels are applied via column.options on the client.
+	 */
 	labels?: RecordLabelIndex;
-	/** Related rows for live path formatting when labels omit an id. */
+	/** Related rows (optional; unused for cell mapping, retained for API stability). */
 	store?: RecordStore;
-	/** Full config for target entity display recipes. */
+	/** Full config (optional; unused for cell mapping, retained for API stability). */
 	config?: ResolvedConfig;
 };
 
@@ -138,12 +141,9 @@ function mapRow(
 		}
 		const raw = row[name];
 		if (isRecordLinkField(field)) {
-			const labeled = formatRecordCellValue(raw, field, {
-				labels: opts?.labels,
-				store: opts?.store,
-				config: opts?.config
-			});
-			out[name] = labeled !== undefined ? labeled : displayValue(raw);
+			// Keep record ids as cell values so inline combo/richselect editors can
+			// round-trip patches. Display labels come from column.options on the client.
+			out[name] = recordCellId(raw);
 		} else {
 			out[name] = displayValue(raw);
 		}
@@ -156,6 +156,20 @@ function isRecordLinkField(field: ResolvedField): boolean {
 	if (field.recordTargets && field.recordTargets.length > 0) return true;
 	const t = field.type.toLowerCase();
 	return t === 'record' || t.startsWith('record<') || t.startsWith('record ');
+}
+
+/**
+ * Normalize a record-link cell to a `table:id` string (or joined list for multi-links).
+ * null/empty → null so optional FKs clear cleanly in editors.
+ */
+function recordCellId(value: unknown): string | null {
+	if (value == null) return null;
+	if (Array.isArray(value)) {
+		const ids = value.map((item) => normalizeRecordId(item)).filter((id) => id !== '');
+		return ids.length ? ids.join(', ') : null;
+	}
+	const id = normalizeRecordId(value);
+	return id || null;
 }
 
 /** Pick entity by table name from ResolvedConfig. */

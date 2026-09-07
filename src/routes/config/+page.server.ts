@@ -1,11 +1,14 @@
 import { error, fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
+import { z } from 'zod';
 import type { AppConfigOverlay, Diagnostic } from '$lib/config/types';
 import { emptyOverlay, softParseOverlay } from '$lib/config/overlay-io';
 import { canOwn } from '$lib/roles';
 import { getUserRoles } from '$lib/server/catalog';
 import { loadOverlay, saveOverlay } from '$lib/server/config';
 import { MutateError } from '$lib/server/data';
+
+const saveSchema = z.object({ overlay: z.string().nullable().default(null) });
 
 export type ConfigPageData = {
 	/** Sparse overlay currently stored (or empty starter). */
@@ -82,11 +85,15 @@ export const actions: Actions = {
 		}
 
 		const roles = await getUserRoles(locals.selection.namespace, locals.user, fetch);
-		const data = await request.formData();
-		const json = data.get('overlay');
+		const parsedForm = saveSchema.safeParse(
+			Object.fromEntries((await request.formData()).entries())
+		);
+		if (!parsedForm.success) {
+			return fail(400, { code: 'invalid_overlay', message: 'Overlay is empty' });
+		}
 
 		try {
-			const parsed = softParseOverlay(typeof json === 'string' ? json : null);
+			const parsed = softParseOverlay(parsedForm.data.overlay);
 			if (!parsed.ok) {
 				return fail(400, { code: 'invalid_overlay', message: parsed.message });
 			}

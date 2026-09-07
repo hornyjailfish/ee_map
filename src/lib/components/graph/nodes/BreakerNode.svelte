@@ -1,9 +1,10 @@
 <script lang="ts">
 	import { Handle, Position, type Node, type NodeProps } from '@xyflow/svelte';
 	import type { GraphNodeData } from '$lib/transform/to-graph';
+	import GraphNodeToolbar from '../GraphNodeToolbar.svelte';
 
 	type BreakerNode = Node<GraphNodeData, 'breaker'>;
-	let { data, selected, isConnectable }: NodeProps<BreakerNode> = $props();
+	let { id, data, selected, isConnectable }: NodeProps<BreakerNode> = $props();
 
 	/** Breakers are always wiring endpoints (handles visible; drag requires nodesConnectable). */
 	const showHandles = $derived(data.canConnect !== false);
@@ -11,6 +12,7 @@
 
 <!-- Content-sized. Handles on breaker role; isConnectable follows canvas nodesConnectable. -->
 <div class={['breaker-node', selected && 'is-selected']}>
+	<GraphNodeToolbar {id} {data} />
 	<div class="breaker-node__body">
 		<span class="breaker-node__label">{data.label}</span>
 		{#if data.subtitle}

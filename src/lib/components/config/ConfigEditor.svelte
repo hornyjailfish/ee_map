@@ -13,6 +13,7 @@
 	} from '$lib/config/types';
 	import {
 		cloneOverlay,
+		emptyOverlay,
 		formatDisplayText,
 		formatSortText,
 		formatStringList,
@@ -72,11 +73,12 @@
 	}: Props = $props();
 
 	// Parent remounts via {#key} when server overlay changes — capture once.
-	const initial = untrack(() => cloneOverlay(initialOverlay));
-	const initialJson = untrack(() => stringifyOverlay(initialOverlay));
+	// cloneOverlay is null-safe; still fall back so draft is never undefined.
+	const initial = untrack(() => cloneOverlay(initialOverlay) ?? emptyOverlay());
+	const initialJson = untrack(() => stringifyOverlay(initial));
 
 	/** Working draft — mutated via touchDraft / JSON apply / reset. */
-	let draft = $state.raw(initial);
+	let draft = $state.raw<AppConfigOverlay>(initial);
 	let baseline = $state(initialJson);
 	let tab = $state('general');
 	/** null = auto-pick first key (derived below). */
@@ -90,9 +92,10 @@
 	let formOk = $state(false);
 	let saving = $state(false);
 
-	const dirty = $derived(stringifyOverlay(draft) !== baseline);
-	const entityKeys = $derived(sortedKeys(draft.entities as Record<string, unknown> | undefined));
-	const edgeKeys = $derived(sortedKeys(draft.edges as Record<string, unknown> | undefined));
+	const draftSafe = $derived(draft ?? emptyOverlay());
+	const dirty = $derived(stringifyOverlay(draftSafe) !== baseline);
+	const entityKeys = $derived(sortedKeys(draftSafe.entities as Record<string, unknown> | undefined));
+	const edgeKeys = $derived(sortedKeys(draftSafe.edges as Record<string, unknown> | undefined));
 	const selectedEntity = $derived(
 		entityPick && entityKeys.includes(entityPick) ? entityPick : (entityKeys[0] ?? null)
 	);
@@ -100,23 +103,23 @@
 		edgePick && edgeKeys.includes(edgePick) ? edgePick : (edgeKeys[0] ?? null)
 	);
 	const searchTables = $derived(
-		[...new Set([...knownTables, ...sortedKeys(draft.search?.fieldsByTable)])].sort((a, b) =>
+		[...new Set([...knownTables, ...sortedKeys(draftSafe.search?.fieldsByTable)])].sort((a, b) =>
 			a.localeCompare(b)
 		)
 	);
-	const payloadJson = $derived(stringifyOverlay(draft));
+	const payloadJson = $derived(stringifyOverlay(draftSafe));
 
 	const activeEntity = $derived.by((): EntityOverlay | undefined => {
-		if (!selectedEntity || !draft.entities) return undefined;
-		return draft.entities[selectedEntity];
+		if (!selectedEntity || !draftSafe.entities) return undefined;
+		return draftSafe.entities[selectedEntity];
 	});
 	const activeEdge = $derived.by((): EdgeOverlay | undefined => {
-		if (!selectedEdge || !draft.edges) return undefined;
-		return draft.edges[selectedEdge];
+		if (!selectedEdge || !draftSafe.edges) return undefined;
+		return draftSafe.edges[selectedEdge];
 	});
 
 	function touchDraft(mutator: (next: AppConfigOverlay) => void) {
-		const next = cloneOverlay(draft);
+		const next = cloneOverlay(draftSafe);
 		mutator(next);
 		draft = next;
 		if (tab === 'json') {
@@ -381,7 +384,7 @@
 								<Textarea
 									id="exclude-tables"
 									rows={4}
-									value={formatStringList(draft.excludeTables)}
+									value={formatStringList(draftSafe.excludeTables)}
 									oninput={(e) => setExcludeTables(e.currentTarget.value)}
 								/>
 								<Field.FieldDescription>
@@ -933,7 +936,7 @@
 										<NativeSelect.Root
 											id="g-dir"
 											class="w-full"
-											value={draft.graph?.layout?.direction ?? ''}
+											value={draftSafe.graph?.layout?.direction ?? ''}
 											onchange={(e) =>
 												touchDraft((next) => {
 													const v = e.currentTarget.value;
@@ -961,7 +964,7 @@
 										<NativeSelect.Root
 											id="g-align"
 											class="w-full"
-											value={draft.graph?.layout?.align ?? ''}
+											value={draftSafe.graph?.layout?.align ?? ''}
 											onchange={(e) =>
 												touchDraft((next) => {
 													const v = e.currentTarget.value;
@@ -993,7 +996,7 @@
 											<Input
 												id={`g-sp-${prop}`}
 												type="number"
-												value={draft.graph?.layout?.spacing?.[prop] ?? ''}
+												value={draftSafe.graph?.layout?.spacing?.[prop] ?? ''}
 												oninput={(e) => setSpacing(prop, e.currentTarget.value)}
 											/>
 										</Field.Field>
@@ -1017,7 +1020,7 @@
 										<Field.FieldLabel for="map-units">Units</Field.FieldLabel>
 										<Input
 											id="map-units"
-											value={draft.map?.units ?? 'm'}
+											value={draftSafe.map?.units ?? 'm'}
 											oninput={(e) =>
 												touchDraft((next) => {
 													ensureMap(next);
@@ -1029,7 +1032,7 @@
 										<Field.FieldLabel for="map-plane">Plane</Field.FieldLabel>
 										<Input
 											id="map-plane"
-											value={draft.map?.plane ?? 'xy-meters'}
+											value={draftSafe.map?.plane ?? 'xy-meters'}
 											oninput={(e) =>
 												touchDraft((next) => {
 													ensureMap(next);
@@ -1042,7 +1045,7 @@
 										<Field.FieldLabel for="map-levels">Levels table</Field.FieldLabel>
 										<Input
 											id="map-levels"
-											value={draft.map?.levelsTable ?? ''}
+											value={draftSafe.map?.levelsTable ?? ''}
 											placeholder="levels"
 											oninput={(e) =>
 												touchDraft((next) => {
@@ -1057,7 +1060,7 @@
 										<Field.FieldLabel for="map-ord">Level order field</Field.FieldLabel>
 										<Input
 											id="map-ord"
-											value={draft.map?.levelOrderField ?? ''}
+											value={draftSafe.map?.levelOrderField ?? ''}
 											placeholder="ord"
 											oninput={(e) =>
 												touchDraft((next) => {
@@ -1088,7 +1091,7 @@
 									<Field.FieldLabel for={`search-${table}`}>{table}</Field.FieldLabel>
 									<Input
 										id={`search-${table}`}
-										value={formatStringList(draft.search?.fieldsByTable?.[table])}
+										value={formatStringList(draftSafe.search?.fieldsByTable?.[table])}
 										placeholder="name, description"
 										oninput={(e) => setSearchTableFields(table, e.currentTarget.value)}
 									/>
@@ -1132,7 +1135,7 @@
 								class="min-h-96 font-mono text-xs"
 								value={jsonText}
 								onfocus={() => {
-									jsonText = stringifyOverlay(draft);
+									jsonText = stringifyOverlay(draftSafe);
 									jsonError = null;
 								}}
 								oninput={(e) => {

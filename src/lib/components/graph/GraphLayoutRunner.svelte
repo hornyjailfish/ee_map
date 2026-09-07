@@ -9,17 +9,20 @@
 	import { onDestroy } from 'svelte';
 	import { useNodesInitialized, useSvelteFlow } from '@xyflow/svelte';
 	import ELK from 'elkjs/lib/elk.bundled.js';
-	import {
-		applyElkLayout,
-		collectElkSizes,
-		toElkGraph,
-		type ElkNodeLike
-	} from '$lib/transform/to-elk';
+	import { applyElkLayoutResult, toElkGraph, type ElkNodeLike } from '$lib/transform/to-elk';
 	import type { GraphEdge, GraphNode, GraphViewModel } from '$lib/transform/to-graph';
-	import { compoundIds, sizesFromFlow, toFlowEdges, toLaidOutNodes } from './graph-flow';
+	import {
+		compoundIds,
+		sizesFromFlow,
+		toFlowEdges,
+		toLaidOutNodes,
+		type GraphNodeUiOpts
+	} from './graph-flow';
 
 	type Props = {
 		graph: GraphViewModel;
+		/** EDITOR toolbar flags applied after ELK. */
+		nodeUi?: GraphNodeUiOpts;
 		/** Bumped by parent to force a re-layout (button). 0 = no manual request yet. */
 		layoutRequest?: number;
 		/**
@@ -34,6 +37,7 @@
 
 	let {
 		graph,
+		nodeUi = {},
 		layoutRequest = 0,
 		fitViewAfter = true,
 		onLayoutStart,
@@ -71,11 +75,10 @@
 
 			if (disposed) return;
 
-			const positioned = applyElkLayout(graph, layout);
-			const elkSizes = collectElkSizes(layout);
+			const { model: positioned, sizes: elkSizes } = applyElkLayoutResult(graph, layout);
 
 			onLayoutDone({
-				nodes: toLaidOutNodes(positioned, elkSizes),
+				nodes: toLaidOutNodes(positioned, elkSizes, nodeUi),
 				edges: toFlowEdges(positioned)
 			});
 
@@ -88,7 +91,7 @@
 			if (disposed) return;
 			const message = err instanceof Error ? err.message : 'ELK layout failed';
 			onLayoutError(message, {
-				nodes: toLaidOutNodes(graph),
+				nodes: toLaidOutNodes(graph, undefined, nodeUi),
 				edges: toFlowEdges(graph)
 			});
 		} finally {

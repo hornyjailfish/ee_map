@@ -48,7 +48,9 @@ export async function postFormAction<T extends Record<string, unknown> = Record<
 ): Promise<T> {
 	const form = new FormData();
 	for (const [key, value] of Object.entries(fields)) {
-		if (value != null) form.set(key, String(value));
+		// Skip only undefined — null clears optional fields as '' → DB null.
+		if (value === undefined) continue;
+		form.set(key, value == null ? '' : String(value));
 	}
 
 	const response = await fetch(`?/${action}`, {

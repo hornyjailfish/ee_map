@@ -3,6 +3,8 @@
  * Fixes classic string sort (1, 10, 11, 2) via numeric-aware collator.
  */
 
+import type { TSortFunction } from '@svar-ui/grid-store';
+
 /** Locale(s) for Intl.Collator; default engine locale is fine for mixed Cyrillic/Latin EE data. */
 const collator = new Intl.Collator(undefined, {
 	numeric: true,
@@ -92,7 +94,7 @@ export function sortRowsByKeys<T extends Record<string, unknown>>(
  * Build a SVAR column `sort` function for one field.
  * SVAR passes full row objects to column sort functions (grid-store ge()).
  */
-export function columnSortFn(field: string): (a: Record<string, unknown>, b: Record<string, unknown>) => -1 | 0 | 1 {
+export function columnSortFn(field: string): TSortFunction {
 	return (a, b) => {
 		const cmp = compareValues(a[field], b[field]);
 		return cmp < 0 ? -1 : cmp > 0 ? 1 : 0;

@@ -1,5 +1,6 @@
 import type { ResolvedGraphLayout } from '$lib/config/types';
 import { DEFAULT_GRAPH_LAYOUT } from '$lib/config/merge';
+import { naturalCompare } from './compare';
 import type { GraphEdge, GraphNode, GraphViewModel } from './to-graph';
 
 /** Loose ELK graph JSON shape (avoids hard dependency on worker types in consumers). */
@@ -157,6 +158,12 @@ export function toElkGraph(model: GraphViewModel, options?: ToElkGraphOptions): 
 		}
 	}
 
+	// Stable visual order: Q0, Q1…Q9, Q10 (not Q1, Q10, Q2)
+	for (const [, kids] of childrenOf) {
+		kids.sort(compareGraphNodes);
+	}
+	roots.sort(compareGraphNodes);
+
 	function sizeOf(id: string): ElkNodeSize {
 		const s = sizes.get(id);
 		if (s && s.width > 0 && s.height > 0) return s;
@@ -180,7 +187,9 @@ export function toElkGraph(model: GraphViewModel, options?: ToElkGraphOptions): 
 		return elk;
 	}
 
-	const edges: ElkEdgeLike[] = model.edges.map((e) => edgeToElk(e));
+	const edges: ElkEdgeLike[] = [...model.edges]
+		.sort((a, b) => compareEdges(a, b, byId))
+		.map((e) => edgeToElk(e));
 
 	return {
 		id: 'root',
@@ -191,6 +200,26 @@ export function toElkGraph(model: GraphViewModel, options?: ToElkGraphOptions): 
 		children: roots.map(toElkNode),
 		edges
 	};
+}
+
+/** Natural label order so breakers lay out as Q0, Q1…Q10 (id as stable tie-break). */
+function compareGraphNodes(a: GraphNode, b: GraphNode): number {
+	const byLabel = naturalCompare(a.data.label ?? '', b.data.label ?? '');
+	if (byLabel !== 0) return byLabel;
+	return naturalCompare(a.id, b.id);
+}
+
+/** Edge model order follows natural source then target labels (fan-out port order). */
+function compareEdges(a: GraphEdge, b: GraphEdge, byId: ReadonlyMap<string, GraphNode>): number {
+	const aSrc = byId.get(a.source);
+	const bSrc = byId.get(b.source);
+	const bySource = naturalCompare(aSrc?.data.label ?? a.source, bSrc?.data.label ?? b.source);
+	if (bySource !== 0) return bySource;
+	const aTgt = byId.get(a.target);
+	const bTgt = byId.get(b.target);
+	const byTarget = naturalCompare(aTgt?.data.label ?? a.target, bTgt?.data.label ?? b.target);
+	if (byTarget !== 0) return byTarget;
+	return naturalCompare(a.id, b.id);
 }
 
 function normalizeSizes(sizes: ToElkGraphOptions['sizes']): Map<string, ElkNodeSize> {
@@ -207,13 +236,29 @@ function edgeToElk(edge: GraphEdge): ElkEdgeLike {
 	};
 }
 
+export type AppliedElkLayout = {
+	model: GraphViewModel;
+	/** ELK compound + leaf sizes (unchanged — leaf reorder preserves layer span). */
+	sizes: Map<string, ElkNodeSize>;
+};
+
 /**
  * Apply ELK layout result positions back onto a new GraphViewModel (immutable).
  * Nested ELK coordinates are parent-relative, matching Svelte Flow nested node positions.
+ * Leaf breakers/outputs in the same layer are reordered by natural label (Q0…Q10).
+ * Rooms/boards keep ELK placement — shuffling unequal compounds caused overlaps.
  */
 export function applyElkLayout(model: GraphViewModel, layout: ElkNodeLike): GraphViewModel {
+	return applyElkLayoutResult(model, layout).model;
+}
+
+/** Like applyElkLayout, also returns ELK sizes for SF compound boxes. */
+export function applyElkLayoutResult(model: GraphViewModel, layout: ElkNodeLike): AppliedElkLayout {
 	const positions = new Map<string, { x: number; y: number }>();
 	collectPositions(layout, positions);
+	const sizes = collectElkSizes(layout);
+	// Only leaf breakers/outputs — never shuffle rooms/boards (unequal boxes → overlaps).
+	orderLeafLayers(model, positions, sizes);
 
 	const nodes = model.nodes.map((node) => {
 		const pos = positions.get(node.id);
@@ -237,13 +282,16 @@ export function applyElkLayout(model: GraphViewModel, layout: ElkNodeLike): Grap
 	}));
 
 	return {
-		nodes,
-		edges,
-		layout: {
-			...model.layout,
-			spacing: { ...model.layout.spacing },
-			compoundPadding: { ...model.layout.compoundPadding }
-		}
+		model: {
+			nodes,
+			edges,
+			layout: {
+				...model.layout,
+				spacing: { ...model.layout.spacing },
+				compoundPadding: { ...model.layout.compoundPadding }
+			}
+		},
+		sizes
 	};
 }
 
@@ -277,6 +325,94 @@ function collectSizes(node: ElkNodeLike, out: Map<string, ElkNodeSize>, isRoot =
 	if (node.children) {
 		for (const child of node.children) {
 			collectSizes(child, out, false);
+		}
+	}
+}
+
+/** Same-layer siblings within this many px on the flow axis count as one row/column. */
+const LAYER_EPSILON = 8;
+
+function isLeafRole(role: string | undefined): boolean {
+	return role === 'breaker' || role === 'output';
+}
+
+/**
+ * Sort leaf breakers/outputs in each layer by natural label (Q0…Q10).
+ * Packs within the original layer span so parent boards/rooms keep ELK sizes and do not
+ * push siblings. Compounds are never moved (unequal box swaps caused room/board overlaps).
+ */
+function orderLeafLayers(
+	model: GraphViewModel,
+	positions: Map<string, { x: number; y: number }>,
+	sizes: ReadonlyMap<string, ElkNodeSize>
+): void {
+	const direction = model.layout?.direction ?? DEFAULT_GRAPH_LAYOUT.direction;
+	const fallbackGap = model.layout?.spacing.node ?? DEFAULT_GRAPH_LAYOUT.spacing.node;
+	const flowIsDown = direction !== 'RIGHT';
+
+	const parentIds = new Set(
+		model.nodes.map((n) => n.parentId).filter((id): id is string => id != null)
+	);
+
+	const siblingsOf = new Map<string, GraphNode[]>();
+	for (const node of model.nodes) {
+		if (!positions.has(node.id)) continue;
+		// Never move compound boxes or non-leaf roles
+		if (parentIds.has(node.id) || !isLeafRole(node.data.role)) continue;
+		const key = node.parentId ?? '';
+		const list = siblingsOf.get(key) ?? [];
+		list.push(node);
+		siblingsOf.set(key, list);
+	}
+
+	for (const siblings of siblingsOf.values()) {
+		if (siblings.length < 2) continue;
+
+		const placed = siblings
+			.map((node) => {
+				const pos = positions.get(node.id)!;
+				const size = sizes.get(node.id);
+				return {
+					node,
+					pos,
+					span: flowIsDown ? (size?.width ?? 0) : (size?.height ?? 0)
+				};
+			})
+			.sort((a, b) =>
+				flowIsDown ? a.pos.y - b.pos.y || a.pos.x - b.pos.x : a.pos.x - b.pos.x || a.pos.y - b.pos.y
+			);
+
+		let layerStart = 0;
+		while (layerStart < placed.length) {
+			const anchor = flowIsDown ? placed[layerStart]!.pos.y : placed[layerStart]!.pos.x;
+			let layerEnd = layerStart + 1;
+			while (layerEnd < placed.length) {
+				const v = flowIsDown ? placed[layerEnd]!.pos.y : placed[layerEnd]!.pos.x;
+				if (Math.abs(v - anchor) > LAYER_EPSILON) break;
+				layerEnd++;
+			}
+
+			if (layerEnd - layerStart > 1) {
+				const layer = placed.slice(layerStart, layerEnd);
+				const cross = (p: (typeof layer)[number]) => (flowIsDown ? p.pos.x : p.pos.y);
+				const left = Math.min(...layer.map(cross));
+				const right = Math.max(...layer.map((p) => cross(p) + p.span));
+				const totalSpan = layer.reduce((sum, p) => sum + p.span, 0);
+				const gaps = layer.length - 1;
+				// Fill original ELK span so parent compounds do not need to grow.
+				const free = right - left - totalSpan;
+				const gap = gaps > 0 ? (free >= 0 ? free / gaps : fallbackGap) : 0;
+
+				layer.sort((a, b) => compareGraphNodes(a.node, b.node));
+				let cursor = left;
+				for (const item of layer) {
+					const { node, pos, span } = item;
+					positions.set(node.id, flowIsDown ? { x: cursor, y: pos.y } : { x: pos.x, y: cursor });
+					cursor += span + gap;
+				}
+			}
+
+			layerStart = layerEnd;
 		}
 	}
 }

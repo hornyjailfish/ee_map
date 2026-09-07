@@ -265,7 +265,7 @@ describe('toTable', () => {
 		expect(typeof raw.id).toBe('object');
 	});
 
-	it('uses label index for record link columns', () => {
+	it('keeps record ids as cell values (labels come from column options client-side)', () => {
 		const labels = new Map([['electric_rooms:r1', 'ER-A']]);
 		const view = toTable(
 			boards,
@@ -280,7 +280,8 @@ describe('toTable', () => {
 			],
 			{ labels }
 		);
-		expect(view.data[0]!.room).toBe('ER-A');
+		// Ids stay writeable; display is via SVAR options / combobox labels.
+		expect(view.data[0]!.room).toBe('electric_rooms:r1');
 	});
 
 	it('applies entity.sort with natural string order to view data', () => {

@@ -6,42 +6,100 @@
 	import { cn } from '$lib/utils.js';
 	import type { HTMLButtonAttributes } from 'svelte/elements';
 
+	/** UI combobox option (string ids); map from SelectOption at call sites. */
 	export type ComboboxOption = {
 		id: string;
+		/** Full text (closed trigger / grid cell via optionsMap). */
 		label: string;
+		/** When set, options are rendered under a Command group heading. */
+		group?: string;
+		/** Short list text when grouped (avoids repeating the group). */
+		itemLabel?: string;
+	};
+
+	type OptionGroup = {
+		key: string;
+		label: string;
+		options: ComboboxOption[];
 	};
 
 	type Props = Omit<HTMLButtonAttributes, 'type' | 'value'> & {
 		options?: ComboboxOption[];
 		value?: string;
 		placeholder?: string;
+		/** Controlled open state (inline editors bind this). */
+		open?: boolean;
 		onValueChange?: (value: string) => void;
+		onOpenChange?: (open: boolean) => void;
 	};
 
 	let {
 		options = [],
 		value = $bindable(''),
+		open = $bindable(false),
 		placeholder = 'Select…',
 		onValueChange,
+		onOpenChange,
 		disabled = false,
 		id,
 		class: className,
 		...restProps
 	}: Props = $props();
 
-	let open = $state(false);
+	function setOpen(next: boolean) {
+		if (open === next) return;
+		open = next;
+		onOpenChange?.(next);
+	}
 
 	const selected = $derived(options.find((option) => option.id === value));
+	/** Closed control shows the full cell-style label. */
 	const selectedLabel = $derived(selected?.label ?? placeholder);
+
+	/** Grouped list when any option carries `group`; otherwise a flat list. */
+	const groups = $derived.by((): OptionGroup[] | null => {
+		if (!options.some((o) => o.group && o.group.trim())) return null;
+
+		const map = new Map<string, ComboboxOption[]>();
+		const ungrouped: ComboboxOption[] = [];
+		for (const option of options) {
+			const g = option.group?.trim();
+			if (!g) {
+				ungrouped.push(option);
+				continue;
+			}
+			let list = map.get(g);
+			if (!list) {
+				list = [];
+				map.set(g, list);
+			}
+			list.push(option);
+		}
+
+		const out: OptionGroup[] = [...map.entries()].map(([key, opts]) => ({
+			key,
+			label: key,
+			options: opts
+		}));
+		if (ungrouped.length) {
+			out.push({ key: '__other__', label: 'Other', options: ungrouped });
+		}
+		return out;
+	});
+
+	function listText(option: ComboboxOption): string {
+		return option.itemLabel?.trim() || option.label;
+	}
 
 	function selectOption(option: ComboboxOption) {
 		value = option.id;
-		open = false;
+		// Notify parent before close so inline editors can mark committed first.
 		onValueChange?.(option.id);
+		setOpen(false);
 	}
 </script>
 
-<PopoverPrimitive.Root bind:open>
+<PopoverPrimitive.Root bind:open onOpenChange={setOpen}>
 	<PopoverPrimitive.Trigger {disabled}>
 		{#snippet child({ props })}
 			<button
@@ -80,17 +138,48 @@
 				<CommandPrimitive.Empty class="py-6 text-center text-sm text-muted-foreground">
 					No results found.
 				</CommandPrimitive.Empty>
-				{#each options as option (option.id)}
-					<CommandPrimitive.Item
-						value={option.id}
-						keywords={[option.label]}
-						onSelect={() => selectOption(option)}
-						class="group relative flex cursor-default select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none data-selected:bg-muted data-selected:text-foreground data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50"
-					>
-						<span class="truncate">{option.label}</span>
-						<CheckIcon class="ml-auto size-4 shrink-0 opacity-0 group-data-selected:opacity-100" />
-					</CommandPrimitive.Item>
-				{/each}
+
+				{#if groups}
+					{#each groups as group (group.key)}
+						<CommandPrimitive.Group value={group.key} class="overflow-hidden p-1">
+							<div
+								class="px-2 py-1.5 text-xs font-medium text-muted-foreground"
+								aria-hidden="true"
+							>
+								{group.label}
+							</div>
+							{#each group.options as option (option.id)}
+								{@const text = listText(option)}
+								<CommandPrimitive.Item
+									value={`${text} ${option.label} ${option.id}`}
+									keywords={[text, option.label, option.group ?? '', option.id]}
+									onSelect={() => selectOption(option)}
+									class="group relative flex cursor-default select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none data-selected:bg-muted data-selected:text-foreground data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50"
+								>
+									<span class="truncate">{text}</span>
+									{#if option.id === value}
+										<CheckIcon class="ml-auto size-4 shrink-0 opacity-100" />
+									{/if}
+								</CommandPrimitive.Item>
+							{/each}
+						</CommandPrimitive.Group>
+					{/each}
+				{:else}
+					{#each options as option (option.id)}
+						{@const text = listText(option)}
+						<CommandPrimitive.Item
+							value={`${text} ${option.id}`}
+							keywords={[text, option.label, option.id]}
+							onSelect={() => selectOption(option)}
+							class="group relative flex cursor-default select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none data-selected:bg-muted data-selected:text-foreground data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50"
+						>
+							<span class="truncate">{text}</span>
+							{#if option.id === value}
+								<CheckIcon class="ml-auto size-4 shrink-0 opacity-100" />
+							{/if}
+						</CommandPrimitive.Item>
+					{/each}
+				{/if}
 			</CommandPrimitive.List>
 		</CommandPrimitive.Root>
 	</PopoverPrimitive.Content>
