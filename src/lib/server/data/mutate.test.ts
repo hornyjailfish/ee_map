@@ -67,7 +67,7 @@ describe('table permission gates', () => {
 });
 
 describe('writableFields', () => {
-	it('excludes id, hidden, readOnly, and non-coercible (geometry) fields', () => {
+	it('excludes id, hidden, readOnly; includes record and geometry fields', () => {
 		const e = entity('boards', [
 			field('id'),
 			field('name'),
@@ -77,8 +77,12 @@ describe('writableFields', () => {
 			field('room', { type: 'record', recordTargets: ['electric_rooms'] }),
 			field('geometry', { type: 'geometry' })
 		]);
-		// record links are writable via the add-row picker; geometry stays out
-		expect(writableFields(e).map((w) => w.name)).toEqual(['name', 'description', 'room']);
+		expect(writableFields(e).map((w) => w.name)).toEqual([
+			'name',
+			'description',
+			'room',
+			'geometry'
+		]);
 	});
 });
 
@@ -126,6 +130,34 @@ describe('coercePatch', () => {
 			room: { toString: () => string };
 		};
 		expect(out.room.toString()).toBe('electric_rooms:r1');
+	});
+
+	it('coerces geometry GeoJSON into SDK Geometry values', () => {
+		const e = entity('rents', [
+			field('geometry', { type: 'geometry', geometryKinds: ['polygon'], optional: true })
+		]);
+		// Rings need 2+ distinct segments for GeometryLine; close the ring.
+		const poly = {
+			type: 'Polygon',
+			coordinates: [
+				[
+					[0, 0],
+					[1, 0],
+					[1, 1],
+					[0, 1],
+					[0, 0]
+				]
+			]
+		};
+		const fromObj = coercePatch(e, { geometry: poly }) as { geometry: { toJSON: () => unknown } };
+		expect(fromObj.geometry.toJSON()).toEqual(poly);
+
+		const fromStr = coercePatch(e, { geometry: JSON.stringify(poly) }) as {
+			geometry: { toJSON: () => unknown };
+		};
+		expect(fromStr.geometry.toJSON()).toEqual(poly);
+
+		expect(coercePatch(e, { geometry: '' })).toEqual({ geometry: null });
 	});
 });
 

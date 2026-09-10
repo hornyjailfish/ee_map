@@ -83,11 +83,35 @@ export function normalizeGeometry(value: unknown): NormalizedGeometry {
 	}
 
 	// Object with x/y numeric fields
-	if (typeof obj.x === 'number' && typeof obj.y === 'number' && Number.isFinite(obj.x) && Number.isFinite(obj.y)) {
+	if (
+		typeof obj.x === 'number' &&
+		typeof obj.y === 'number' &&
+		Number.isFinite(obj.x) &&
+		Number.isFinite(obj.y)
+	) {
 		return { kind: 'point', x: obj.x, y: obj.y };
 	}
 
 	return { kind: 'empty' };
+}
+
+/**
+ * Convert a normalized geometry back to GeoJSON for Surreal writes.
+ * Empty / unsupported → null.
+ */
+export function geometryToGeoJSON(
+	geometry: NormalizedGeometry
+):
+	| { type: 'Point'; coordinates: [number, number] }
+	| { type: 'Polygon'; coordinates: Array<Array<[number, number]>> }
+	| null {
+	if (geometry.kind === 'point') {
+		return { type: 'Point', coordinates: [geometry.x, geometry.y] };
+	}
+	if (geometry.kind === 'polygon') {
+		return { type: 'Polygon', coordinates: geometry.rings };
+	}
+	return null;
 }
 
 /** Axis-aligned bbox [minX, minY, maxX, maxY] in map units, or null if empty. */
@@ -255,7 +279,12 @@ function unionBBoxes(
 		if (d > maxY) maxY = d;
 	}
 
-	if (!Number.isFinite(minX) || !Number.isFinite(minY) || !Number.isFinite(maxX) || !Number.isFinite(maxY)) {
+	if (
+		!Number.isFinite(minX) ||
+		!Number.isFinite(minY) ||
+		!Number.isFinite(maxX) ||
+		!Number.isFinite(maxY)
+	) {
 		return null;
 	}
 
@@ -279,7 +308,11 @@ function mapLevels(
 		const ordVal = row[orderField];
 		if (typeof ordVal === 'number' && Number.isFinite(ordVal)) {
 			level.ord = ordVal;
-		} else if (typeof ordVal === 'string' && ordVal.trim() !== '' && Number.isFinite(Number(ordVal))) {
+		} else if (
+			typeof ordVal === 'string' &&
+			ordVal.trim() !== '' &&
+			Number.isFinite(Number(ordVal))
+		) {
 			level.ord = Number(ordVal);
 		}
 

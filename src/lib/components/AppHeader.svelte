@@ -2,6 +2,7 @@
 	import { enhance } from '$app/forms';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
+	import type { Pathname } from '$app/types';
 	import type { SubmitFunction } from '@sveltejs/kit';
 	import type { AppCatalog, AppRole } from '$lib/catalog-types';
 	import * as Alert from '$lib/components/ui/alert/index.js';
@@ -12,7 +13,7 @@
 	import { Input } from '$lib/components/ui/input/index.js';
 	import * as NativeSelect from '$lib/components/ui/native-select/index.js';
 	import { Spinner } from '$lib/components/ui/spinner/index.js';
-	import { canOwn } from '$lib/roles';
+	import { canEdit, canOwn } from '$lib/roles';
 	import { cn } from '$lib/utils';
 	import CircleAlertIcon from '@lucide/svelte/icons/circle-alert';
 
@@ -39,6 +40,8 @@
 	const pathname = $derived(page.url.pathname);
 
 	function navActive(href: string): boolean {
+		// Exact match for leaf routes; `/map` must not stay active on `/map/assign`.
+		if (href === '/map') return pathname === href || pathname === `${href}/`;
 		return pathname === href || pathname.startsWith(`${href}/`);
 	}
 
@@ -61,6 +64,7 @@
 		userRoles ?? catalog.users.find((entry) => entry.name === user)?.roles ?? []
 	);
 	const showConfigNav = $derived(canOwn(roles));
+	const showAssignNav = $derived(canEdit(roles));
 	const databases = $derived(
 		catalog.databases.length > 0 ? catalog.databases : [selection.database]
 	);
@@ -173,6 +177,21 @@
 						{item.label}
 					</a>
 				{/each}
+				{#if showAssignNav}
+					{@const assignActive = navActive('/map/assign')}
+					<a
+						href={resolve('/map/assign' as Pathname)}
+						class={cn(
+							'rounded-md px-2.5 py-1.5 text-sm transition-colors',
+							assignActive
+								? 'bg-muted font-medium text-foreground'
+								: 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
+						)}
+						aria-current={assignActive ? 'page' : undefined}
+					>
+						Assign
+					</a>
+				{/if}
 				{#if showConfigNav}
 					{@const configActive = navActive('/config')}
 					<a

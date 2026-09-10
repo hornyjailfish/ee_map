@@ -8,9 +8,10 @@
 	import { Command as CommandPrimitive } from 'bits-ui';
 	import CheckIcon from '@lucide/svelte/icons/check';
 	import SearchIcon from '@lucide/svelte/icons/search';
-	import * as Popover from '$lib/components/ui/popover/index.js';
-	import type { ComboboxOption } from '$lib/components/ui/combobox/index.js';
+	import { comboboxCommandFilter } from '$lib/client/combobox-filter';
 	import type { InlineEditorProps } from '$lib/client/editors/registry';
+	import type { ComboboxOption } from '$lib/components/ui/combobox/index.js';
+	import * as Popover from '$lib/components/ui/popover/index.js';
 
 	let { editor, onsave, onapply, oncancel }: InlineEditorProps = $props();
 
@@ -103,10 +104,7 @@
   Plain cell text only. SVAR owns the .wx-editor chrome; we must not mount a
   Popover.Trigger here or it becomes the close-focus target and eats the cell.
 -->
-<div
-	use:bindValueEl
-	class="flex h-full w-full min-w-0 items-center overflow-hidden px-2 text-sm"
->
+<div use:bindValueEl class="flex h-full w-full min-w-0 items-center overflow-hidden px-2 text-sm">
 	<span class="truncate">{displayLabel}</span>
 </div>
 
@@ -129,7 +127,10 @@
 				if (t instanceof Node && anchor?.contains(t)) e.preventDefault();
 			}}
 		>
-			<CommandPrimitive.Root class="flex w-full flex-col overflow-hidden">
+			<CommandPrimitive.Root
+				class="flex w-full flex-col overflow-hidden"
+				filter={comboboxCommandFilter}
+			>
 				<div class="flex items-center gap-2 border-b border-border px-2.5">
 					<SearchIcon class="size-4 shrink-0 text-muted-foreground" />
 					<CommandPrimitive.Input
@@ -146,19 +147,17 @@
 					{#if groups}
 						{#each groups as group (group.key)}
 							<CommandPrimitive.Group value={group.key} class="overflow-hidden p-1">
-								<div
-									class="px-2 py-1.5 text-sm font-bold text-muted-foreground"
-									aria-hidden="true"
-								>
+								<div class="px-2 py-1.5 text-sm font-bold text-muted-foreground" aria-hidden="true">
 									{group.label}
 								</div>
 								{#each group.options as option (option.id)}
 									{@const text = listText(option)}
+									<!-- value = id (unique); keywords = names only (ranked above id). -->
 									<CommandPrimitive.Item
-										value={`${text} ${option.label} ${option.id}`}
-										keywords={[text, option.label, option.group ?? '', option.id]}
+										value={option.id}
+										keywords={[text, option.label, option.group ?? '']}
 										onSelect={() => selectOption(option)}
-										class="relative flex cursor-default select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none data-selected:bg-muted data-selected:text-foreground data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50"
+										class="relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none select-none data-selected:bg-muted data-selected:text-foreground data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50"
 									>
 										<span class="truncate">{text}</span>
 										{#if option.id === value}
@@ -172,10 +171,10 @@
 						{#each options as option (option.id)}
 							{@const text = listText(option)}
 							<CommandPrimitive.Item
-								value={`${text} ${option.id}`}
-								keywords={[text, option.label, option.id]}
+								value={option.id}
+								keywords={[text, option.label]}
 								onSelect={() => selectOption(option)}
-								class="relative flex cursor-default select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none data-selected:bg-muted data-selected:text-foreground data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50"
+								class="relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none select-none data-selected:bg-muted data-selected:text-foreground data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50"
 							>
 								<span class="truncate">{text}</span>
 								{#if option.id === value}

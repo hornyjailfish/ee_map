@@ -5,7 +5,7 @@
  * write path (table cells/rows, graph wires, map geometry) uses the same gates.
  */
 
-import { StringRecordId, type Surreal } from 'surrealdb';
+import { Geometry, StringRecordId, type Surreal } from 'surrealdb';
 import type { AppRole } from '$lib/catalog-types';
 import type { ResolvedEdge, ResolvedEntity, ResolvedField } from '$lib/config/types';
 import { canEdit, canOwn } from '$lib/roles';
@@ -34,8 +34,7 @@ export type WritableField = {
 
 /**
  * Fields editable on this entity.
- * Excludes `id`, hidden, readOnly; scalars + record links are coercible.
- * Geometry needs a dedicated editor (C4).
+ * Excludes `id`, hidden, readOnly; scalars + record links + geometry are coercible.
  */
 export function writableFields(entity: ResolvedEntity): WritableField[] {
 	return entity.fields
@@ -46,7 +45,7 @@ export function writableFields(entity: ResolvedEntity): WritableField[] {
 }
 
 function isCoercible(field: ResolvedField): boolean {
-	return isScalar(field) || field.type === 'record';
+	return isScalar(field) || field.type === 'record' || field.type === 'geometry';
 }
 
 function isScalar(field: ResolvedField): boolean {
@@ -116,7 +115,8 @@ export function assertCanUnrelate(relation: ResolvedEdge): void {
  */
 export function coerceScalar(field: ResolvedField, raw: unknown): unknown {
 	if (raw === '' || raw === undefined || raw === null) {
-		if (field.optional) return undefined;
+		// Explicit null so MERGE clears the field (undefined keys are omitted by JSON/SDK).
+		if (field.optional) return null;
 		throw new MutateError(400, 'required_field', `Field '${field.name}' is required`);
 	}
 
@@ -160,8 +160,142 @@ export function coerceScalar(field: ResolvedField, raw: unknown): unknown {
 			// StringRecordId preserves numeric vs string key types (e.g. levels:-2).
 			return new StringRecordId(value);
 		}
+		case 'geometry':
+			return coerceGeometry(field, raw);
 		default:
 			throw new MutateError(400, 'unsupported_type', `Field '${field.name}' is not editable`);
+	}
+}
+
+/**
+ * Coerce GeoJSON geometry for a geometry field.
+ * Accepts a plain object, JSON string, or SDK {@link Geometry} instance.
+ * Returns a Surreal SDK Geometry value (CBOR-tagged) — plain `{ type, coordinates }`
+ * objects are rejected by the engine over MERGE/params.
+ * Optional empty → `null`.
+ */
+export function coerceGeometry(field: ResolvedField, raw: unknown): Geometry | null {
+	if (raw === '' || raw === undefined || raw === null) {
+		if (field.optional) return null;
+		throw new MutateError(400, 'required_field', `Field '${field.name}' is required`);
+	}
+
+	// Already a Surreal geometry value from a prior coerce / SDK path
+	if (raw instanceof Geometry) {
+		return assertGeometryKind(field, raw);
+	}
+
+	let value: unknown = raw;
+	if (typeof raw === 'string') {
+		try {
+			value = JSON.parse(raw);
+		} catch {
+			throw new MutateError(400, 'invalid_geometry', `Field '${field.name}' must be valid GeoJSON`);
+		}
+	}
+
+	if (value == null || typeof value !== 'object' || Array.isArray(value)) {
+		throw new MutateError(
+			400,
+			'invalid_geometry',
+			`Field '${field.name}' must be a geometry object`
+		);
+	}
+
+	const obj = value as Record<string, unknown>;
+	const typeRaw = typeof obj.type === 'string' ? obj.type.toLowerCase() : '';
+	if (typeRaw !== 'point' && typeRaw !== 'polygon') {
+		throw new MutateError(
+			400,
+			'invalid_geometry',
+			`Field '${field.name}' supports Point or Polygon geometry`
+		);
+	}
+
+	const kind = typeRaw; // point | polygon
+	if (
+		field.geometryKinds?.length &&
+		!field.geometryKinds.map((k) => k.toLowerCase()).includes(kind)
+	) {
+		throw new MutateError(
+			400,
+			'invalid_geometry',
+			`Field '${field.name}' expects ${field.geometryKinds.join(' | ')}`
+		);
+	}
+
+	if (!('coordinates' in obj)) {
+		throw new MutateError(400, 'invalid_geometry', `Field '${field.name}' is missing coordinates`);
+	}
+
+	// Title-case GeoJSON for Geometry.fromJSON / constructors
+	const type = kind === 'point' ? 'Point' : 'Polygon';
+	const geojson = { type, coordinates: obj.coordinates } as {
+		type: 'Point' | 'Polygon';
+		coordinates: unknown;
+	};
+
+	try {
+		return Geometry.fromJSON(geojson as Parameters<typeof Geometry.fromJSON>[0]);
+	} catch (err) {
+		const message = err instanceof Error ? err.message : 'Invalid geometry';
+		throw new MutateError(400, 'invalid_geometry', `Field '${field.name}': ${message}`);
+	}
+}
+
+function assertGeometryKind(field: ResolvedField, geometry: Geometry): Geometry {
+	if (!field.geometryKinds?.length) return geometry;
+	const allowed = new Set(field.geometryKinds.map((k) => k.toLowerCase()));
+	const json = geometry.toJSON();
+	const kind = typeof json.type === 'string' ? json.type.toLowerCase() : '';
+	if (!allowed.has(kind)) {
+		throw new MutateError(
+			400,
+			'invalid_geometry',
+			`Field '${field.name}' expects ${field.geometryKinds.join(' | ')}`
+		);
+	}
+	return geometry;
+}
+
+/**
+ * Resolve the geometry field name for an entity (map overlay or first geometry field).
+ */
+export function geometryFieldName(entity: ResolvedEntity): string | null {
+	const fromMap = entity.map?.geometryField;
+	if (fromMap && entity.fields.some((f) => f.name === fromMap && f.type === 'geometry')) {
+		return fromMap;
+	}
+	const field = entity.fields.find((f) => f.type === 'geometry' && !f.hidden && !f.readOnly);
+	return field?.name ?? null;
+}
+
+/**
+ * Patch a record's geometry (and optional companion fields such as level).
+ * `geometry` may be a GeoJSON object or JSON string.
+ */
+export async function patchGeometry(
+	session: Surreal,
+	entity: ResolvedEntity,
+	id: string,
+	geometry: unknown,
+	extra: Record<string, unknown> = {}
+): Promise<void> {
+	assertCanUpdate(entity);
+
+	const geomName = geometryFieldName(entity);
+	if (!geomName) {
+		throw new MutateError(400, 'no_geometry_field', `Table '${entity.name}' has no geometry field`);
+	}
+
+	const values: Record<string, unknown> = { [geomName]: geometry, ...extra };
+	const data = coercePatch(entity, values);
+
+	try {
+		const record = validateRecordId(id);
+		await session.query('UPDATE type::record($record) MERGE $data', { record, data });
+	} catch (error) {
+		throw normalizeSurrealError(error, `update geometry on ${entity.name}`);
 	}
 }
 

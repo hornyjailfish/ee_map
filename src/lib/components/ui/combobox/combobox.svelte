@@ -3,6 +3,7 @@
 	import CheckIcon from '@lucide/svelte/icons/check';
 	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
 	import SearchIcon from '@lucide/svelte/icons/search';
+	import { comboboxCommandFilter } from '$lib/client/combobox-filter';
 	import { cn } from '$lib/utils.js';
 	import type { HTMLButtonAttributes } from 'svelte/elements';
 
@@ -108,7 +109,7 @@
 				{id}
 				type="button"
 				class={cn(
-					'flex h-8 w-full min-w-0 items-center justify-between gap-1.5 rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none transition-colors select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:bg-input/30 dark:hover:bg-input/50 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40',
+					'flex h-8 w-full min-w-0 items-center justify-between gap-1.5 rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm transition-colors outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:bg-input/30 dark:hover:bg-input/50 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40',
 					className
 				)}
 			>
@@ -125,7 +126,10 @@
 		align="start"
 		class="z-50 w-(--bits-popover-anchor-width) origin-(--transform-origin) rounded-lg bg-popover p-1 text-popover-foreground shadow-md ring-1 ring-foreground/10 outline-hidden"
 	>
-		<CommandPrimitive.Root class="flex size-full flex-col overflow-hidden">
+		<CommandPrimitive.Root
+			class="flex size-full flex-col overflow-hidden"
+			filter={comboboxCommandFilter}
+		>
 			<div class="flex items-center gap-2 border-b border-border px-2.5">
 				<SearchIcon class="size-4 shrink-0 text-muted-foreground" />
 				<CommandPrimitive.Input
@@ -142,19 +146,17 @@
 				{#if groups}
 					{#each groups as group (group.key)}
 						<CommandPrimitive.Group value={group.key} class="overflow-hidden p-1">
-							<div
-								class="px-2 py-1.5 text-xs font-medium text-muted-foreground"
-								aria-hidden="true"
-							>
+							<div class="px-2 py-1.5 text-xs font-medium text-muted-foreground" aria-hidden="true">
 								{group.label}
 							</div>
 							{#each group.options as option (option.id)}
 								{@const text = listText(option)}
+								<!-- value = id (unique); keywords = names only (ranked above id). -->
 								<CommandPrimitive.Item
-									value={`${text} ${option.label} ${option.id}`}
-									keywords={[text, option.label, option.group ?? '', option.id]}
+									value={option.id}
+									keywords={[text, option.label, option.group ?? '']}
 									onSelect={() => selectOption(option)}
-									class="group relative flex cursor-default select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none data-selected:bg-muted data-selected:text-foreground data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50"
+									class="group relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none select-none data-selected:bg-muted data-selected:text-foreground data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50"
 								>
 									<span class="truncate">{text}</span>
 									{#if option.id === value}
@@ -168,10 +170,10 @@
 					{#each options as option (option.id)}
 						{@const text = listText(option)}
 						<CommandPrimitive.Item
-							value={`${text} ${option.id}`}
-							keywords={[text, option.label, option.id]}
+							value={option.id}
+							keywords={[text, option.label]}
 							onSelect={() => selectOption(option)}
-							class="group relative flex cursor-default select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none data-selected:bg-muted data-selected:text-foreground data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50"
+							class="group relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none select-none data-selected:bg-muted data-selected:text-foreground data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50"
 						>
 							<span class="truncate">{text}</span>
 							{#if option.id === value}
