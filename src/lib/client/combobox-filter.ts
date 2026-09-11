@@ -26,7 +26,7 @@ const ID = {
 	fuzzyScale: 0.18
 } as const;
 
-type Tier = typeof NAME;
+type Tier = typeof NAME | typeof ID;
 
 /**
  * Score one option for the command filter.
