@@ -368,7 +368,11 @@ export type ResolvedEdge = {
 /** Derived map layer from an entity with `map.enabled === true`. */
 export type ResolvedMapLayer = {
 	table: string;
-	levelField: string;
+	/**
+	 * FK used to filter by active level. Omitted for self-level tables (e.g. `levels`
+	 * floor plans): feature id is treated as the level id.
+	 */
+	levelField?: string;
 	geometryField: string;
 	layerGroup?: string;
 	/** Defaults to table name when overlay omits styleKey. */

@@ -2,6 +2,7 @@
 # EE presentation deltas for resolveAppConfig → merge(auto, overlay).
 # Sparse only — field inventories come from live INFO STRUCTURE.
 # INSERT IGNORE keeps local OWNER edits if the record already exists.
+# Additive levels.map patch: 99b-app_config-levels-map.surql
 
 INSERT IGNORE INTO app_config [
 	{
@@ -108,8 +109,16 @@ INSERT IGNORE INTO app_config [
 				display: {
 					field: 'name'
 				},
+				# Floor plan background — no levelField (row id is the level)
+				map: {
+					enabled: true,
+					geometryField: 'geometry',
+					layerGroup: 'background',
+					styleKey: 'levels',
+					zIndex: 0
+				},
 				table: {
-					order: ['ord', 'name'],
+					order: ['ord', 'name', 'geometry'],
 					sort: 'ord'
 				}
 			}

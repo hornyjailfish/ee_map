@@ -395,22 +395,23 @@ function buildMapLayers(tables: ResolvedEntity[], diagnostics: Diagnostic[]): Re
 		const levelField = entity.map.levelField;
 		const geometryField = entity.map.geometryField;
 
-		if (!levelField || !geometryField) {
+		// geometryField required; levelField optional (self-level layers such as floor plans)
+		if (!geometryField) {
 			diagnostics.push({
 				level: 'warn',
 				code: 'map_layer_incomplete',
-				message: `Entity '${entity.name}' map.enabled but missing levelField or geometryField`
+				message: `Entity '${entity.name}' map.enabled but missing geometryField`
 			});
 			continue;
 		}
 
 		const layer: ResolvedMapLayer = {
 			table: entity.name,
-			levelField,
 			geometryField,
 			styleKey: entity.map.styleKey ?? entity.name,
 			zIndex: entity.map.zIndex ?? 0
 		};
+		if (levelField !== undefined) layer.levelField = levelField;
 		if (entity.map.layerGroup !== undefined) layer.layerGroup = entity.map.layerGroup;
 		layers.push(layer);
 	}

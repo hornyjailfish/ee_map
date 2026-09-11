@@ -1,5 +1,5 @@
 
-INSERT INTO rents [
+INSERT IGNORE INTO rents [
  {  name: 'A71' },
  {  name: 'A1.5' },
  {  name: 'A32' },
@@ -43,7 +43,7 @@ INSERT INTO rents [
  {  name: 'A74' },
  {  name: '0-1' },
  {  name: 'U2' },
- {  name: 'A6a' },
+ {  name: 'A6а' },
  {  name: 'B47' },
  {  name: 'A75' },
  {  name: 'B17' },
@@ -74,7 +74,6 @@ INSERT INTO rents [
  {  name: 'B81-4' },
  {  name: 'B70-71' },
  {  name: 'B28а' },
- {  name: 'B69a' },
  {  name: 'B44' },
  {  name: 'B16г' },
  {  name: 'A35' },
@@ -106,7 +105,6 @@ INSERT INTO rents [
  {  name: 'B80' },
  {  name: 'B26' },
  {  name: 'A87' },
- {  name: '0-22' },
  {  name: 'A1.8' },
  {  name: 'A74b' },
  {  name: 'A22' },
