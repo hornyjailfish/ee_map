@@ -23,7 +23,7 @@ Internal tool for an electrical engineering team. Three views over the same Surr
 | Shared focus (`appUi.focusedId`) across views                              | **N10 done**                                  |
 | `/config` overlay editor (OWNER)                                           | **N12 done**                                  |
 | `/map/assign` static GeoJSON → record geometry                             | **C4.0 done** (match assigned, search, hide)  |
-| Floor-plan layer (`levels.geometry` MultiLine + optional `levelField`)     | **C4.0b in tree** (schema/seed/to-map/OL)     |
+| Floor-plan layer (`levels.geometry` MultiLine + optional `levelField`)     | **C4.0b done** (schema/seed/to-map/OL)        |
 | In-map vertex/draw edit on `/map`                                          | **C4.1 next**                                 |
 | Header search                                                              | **Deferred** (embedding service; no data yet) |
 
@@ -519,7 +519,7 @@ Resolved entity + rows → to-table → { data, columns } → <Grid />
 | **C3**   | Graph: persist `connects` on draw/delete   | **Done** (EDITOR/OWNER; SF edge-id fix; topology-only delete) |
 | **C3.1** | Graph: node create/delete + props toolbar  | **Done / polishing** (nested add, ELK packing) |
 | **C4.0** | Map assign: static geo → `patchGeometry`   | **Done** — `/map/assign`, assigned match, record search |
-| **C4.0b**| Levels floor-plan MultiLine background     | **In progress** — schema + seed + to-map line + OL |
+| **C4.0b**| Levels floor-plan MultiLine background     | **Done** — schema + seed + to-map line + OL |
 | **C4.1** | Map: in-view geometry edit (vertex/draw)   | **Next** on `feature/map-editor` |
 | **N12**  | Light overlay admin UI (`/config`, OWNER)  | **Done** — soft overlay editor |
 
