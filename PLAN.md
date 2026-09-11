@@ -2,8 +2,9 @@
 
 Internal tool for an electrical engineering team. Three views over the same Surreal data and session, driven by a shared configuration layer.
 
-**Status:** config spine + three read views + selection (N10) + table CRUD (C0–C2, C1.1 record combobox) + graph wire writes (C3) + overlay admin (N12). Search deferred. Map geom edit (C4) next.  
-**Stack:** SvelteKit + Surreal session/auth + SurrealKit (schema/seed/typegen) + SVAR Grid + Svelte Flow/ELK + OpenLayers.
+**Status:** config spine + three read views + selection (N10) + table/graph CRUD (C0–C3) + overlay admin (N12) + map geometry **assign** (C4.0). Header search deferred (N9). Next: in-map geometry editor (C4.1).  
+**Stack:** SvelteKit + Surreal session/auth + SurrealKit (schema/seed/typegen) + SVAR Grid + Svelte Flow/ELK + OpenLayers.  
+**Branch:** `feature/map-editor` (from `feature/crud`) — C4 map spatial work.
 
 ---
 
@@ -18,9 +19,12 @@ Internal tool for an electrical engineering team. Three views over the same Surr
 | Typegen → `src/lib/types/` (SDK interfaces)                        | Done (regenerate after schema edits)          |
 | `app_config` overlay / merge / resolve                             | **N1–N3 done** (merge + live resolve + seed)  |
 | `AppUiState`, view nav, full-page chrome                           | **N4 done**                                   |
-| `/table`, `/graph`, `/map`                                                 | **N5–N8 done** + table writes (C1–C2 + C1.1) + graph wires (C3) |
+| `/table`, `/graph`, `/map`                                                 | **N5–N8 done** + table writes (C1–C2 + C1.1) + graph wires/nodes (C3+) |
 | Shared focus (`appUi.focusedId`) across views                              | **N10 done**                                  |
 | `/config` overlay editor (OWNER)                                           | **N12 done**                                  |
+| `/map/assign` static GeoJSON → record geometry                             | **C4.0 done** (match assigned, search, hide)  |
+| Floor-plan layer (`levels.geometry` MultiLine + optional `levelField`)     | **C4.0b in tree** (schema/seed/to-map/OL)     |
+| In-map vertex/draw edit on `/map`                                          | **C4.1 next**                                 |
 | Header search                                                              | **Deferred** (embedding service; no data yet) |
 
 ---
@@ -470,7 +474,9 @@ Resolved entity + rows → to-table → { data, columns } → <Grid />
 - Identity meter plane; extent from config or bbox
 - Level switcher → `AppUiState.levelId`
 - Layers from `map.enabled` entities
-- Geometry normalizer: polygon + point (Surreal geometry in **same** metric plane)
+- Geometry normalizer: polygon + point + **line** (LineString / MultiLineString) in **same** metric plane
+- Floor plans: `levels` as self-level background layer (`levelField` optional; row id = level)
+- Assign path: `/map/assign` (static `static/geo/**` → `patchGeometry`)
 - No outdoor tiles as primary UX
 
 ---
@@ -510,31 +516,39 @@ Resolved entity + rows → to-table → { data, columns } → <Grid />
 | **C1**  | Table inline edit (SVAR) + patch            | **Done** (scalars + record combobox) |
 | **C1.1**| Inline record picker + grouped options      | **Done** (combobox; boards group by room) |
 | **C2**  | Table add/delete row                        | **Done** (modal + validation) |
-| **C3**  | Graph: persist `connects` on draw/delete    | **Done** (EDITOR/OWNER; SF edge-id fix; topology-only delete) |
-| **C4**  | Map: geometry edit (vertex drag / assign)   | Spatial ops (optional v1.1)    |
-| **N12** | Light overlay admin UI (`/config`, OWNER)   | **Done** — soft overlay editor |
+| **C3**   | Graph: persist `connects` on draw/delete   | **Done** (EDITOR/OWNER; SF edge-id fix; topology-only delete) |
+| **C3.1** | Graph: node create/delete + props toolbar  | **Done / polishing** (nested add, ELK packing) |
+| **C4.0** | Map assign: static geo → `patchGeometry`   | **Done** — `/map/assign`, assigned match, record search |
+| **C4.0b**| Levels floor-plan MultiLine background     | **In progress** — schema + seed + to-map line + OL |
+| **C4.1** | Map: in-view geometry edit (vertex/draw)   | **Next** on `feature/map-editor` |
+| **N12**  | Light overlay admin UI (`/config`, OWNER)  | **Done** — soft overlay editor |
 
 ### Immediate coding focus
 
 ```text
-C4 (map geometry edit)
+C4.1 — in-map geometry editor on /map (vertex drag / draw / clear)
+  reuse: patchGeometry + assertCanEdit + geometry normalizer
+  after: invalidate map load; keep appUi.focusedId + levelId
 ```
 
-Table + graph writes are live. VIEWER is read-only on all write seams (`assertCanEdit`).
-Add-row always uses a validation modal. Record FKs use the registered `combobox` editor
-(inline + form) with Command groups when the target display recipe is multi-part.
+**Shipped write seams:** table + graph wires/nodes + map **assign**. VIEWER is read-only
+(`assertCanEdit` / `assertCanUpdate`). Add-row always uses a validation modal. Record FKs
+use the registered `combobox` editor (inline + form) with Command groups when the target
+display recipe is multi-part.
+
+**C4 split**
+
+| Slice | UX | Persist |
+| ----- | -- | ------- |
+| C4.0 assign | Pick static feature + DB row | `patchGeometry` (+ optional level) |
+| C4.0b floor plan | `levels.geometry` linework under features | seed / sync from `static/geo/*/base.geojson` |
+| C4.1 editor | Modify/draw on live `/map` features | same `patchGeometry` (and later create+geom) |
 
 ### CRUD design (toward C0–C4)
 
 **Roles**
 
-| Role   | Read | Table cell/row | Graph wires | Map geom | Overlay admin |
-| ------ | ---- | -------------- | ----------- | -------- | ------------- |
-| VIEWER | ✓    | —              | —           | —        | —             |
-| EDITOR | ✓    | ✓              | ✓           | later    | —             |
-| OWNER  | ✓    | ✓              | ✓           | later    | ✓ (N12)       |
-
-Gate on server from session user + catalog roles (same source as `userRoles` today). Client only hides controls.
+Gate on server from session user + catalog roles (same source as `userRoles` today). Client only hides controls. Role matrix under **Map (C4)** above.
 
 **Write seam (C0)**
 
@@ -542,42 +556,56 @@ Gate on server from session user + catalog roles (same source as `userRoles` tod
 src/lib/server/data/mutate.ts
   assertCanEdit(roles) → EDITOR | OWNER   // VIEWER always rejected
   patchRecord / createRecord / deleteRecord
+  patchGeometry(session, entity, id, geometry, extra?)
   relateConnect(session, relation, inId, outId, meta?)
   unrelateConnect(session, relation, edgeId)
-/graph actions: connect + disconnect (same role gate)
+/table · /graph · /map/assign actions (same role gate)
 ```
 
 - Allowlist **table** via `ResolvedConfig.tables` / `isValidTableName`
 - Allowlist **fields** via entity field list; reject `id`, hidden, `readOnly`
-- Coerce link fields with RecordId; geometry later (C4)
-- Prefer **remote functions or form actions** on `/table` (and later `/graph`) over ad-hoc fetch routes — same session cookies
+- Coerce link fields with RecordId; geometry via SDK Geometry (CBOR) — not plain JSON bags
+- Prefer **remote functions or form actions** over ad-hoc fetch routes — same session cookies
 - After write: `invalidateAll` / targeted invalidate so graph+map reload; keep `appUi.focusedId`
 
-**Table (C1–C2)** — primary EE ops surface
+**Table (C1–C2)** — primary EE ops surface — **done**
 
 - Columns already carry `readOnly` / `editor` from overlay merge → enable SVAR editors only when `canEdit`
 - Cell commit → `patchRecord`; show error toast, revert on failure
 - Add row: empty defaults + required fields; Delete: confirm, then `deleteRecord`
 - Do not invent business defaults in UI without schema/seed guidance
 
-**Graph (C3)** — topology only
+**Graph (C3 / C3.1)** — topology + nested structure — **done** (polish OK)
 
-- Today: `onconnect` only mutates client edges
-- Persist: `RELATE $in -> connects -> $out` (+ optional cable meta)
-- Delete selected edge → delete `connects` row
-- Non-goals still: freehand redraw of rooms/boards; full output taxonomy UI
+- Persist wires: `RELATE $in -> connects -> $out` (+ optional cable meta)
+- Delete selected edge → delete `connects` row only (not containment)
+- Node add/delete via mutate + graph toolbar; layout via ELK
+- Non-goals still: freehand redraw of rooms/boards as map shapes; full output taxonomy UI
 
-**Map (C4)** — later than table/graph wires
+**Map (C4)** — spatial writes
 
-- Metric XY vertex edit / move polygon; write geometry field
+- **C4.0 done:** `/map/assign` loads `static/geo/{folder}/{name}.geojson`, EDITOR/OWNER picks
+  feature + record, writes geometry (+ level when field exists). Assigned features matched by
+  `geometryKey` fingerprint against DB rows; optional hide-assigned; record list via fuzzy search remote.
+- **C4.0b:** `levels.geometry` as MultiLine floor plan; map layers may omit `levelField`
+  (self-level = row id). Style registry + OL render line geometries.
+- **C4.1 next:** metric XY vertex edit / move / draw on `/map`; write via `patchGeometry`
 - Level stays filter only unless moving feature across levels explicitly
 
-**Out of scope for first CRUD slice**
+**Roles (current)**
 
-- Embeddings / search (N9)
+| Role   | Read | Table | Graph | Map assign | Map edit (C4.1) | Overlay |
+| ------ | ---- | ----- | ----- | ---------- | --------------- | ------- |
+| VIEWER | ✓    | —     | —     | —          | —               | —       |
+| EDITOR | ✓    | ✓     | ✓     | ✓          | planned         | —       |
+| OWNER  | ✓    | ✓     | ✓     | ✓          | planned         | ✓       |
+
+**Out of scope for first CRUD slice** (historical — mostly cleared)
+
+- Embeddings / header search (N9) — still deferred
 - Multiplayer OT/CRDT
-- Overlay admin (N12) before C1 works
-- Map draw tools before table+graph writes exist
+- Overlay admin before C1 — cleared (N12 after C1)
+- Map draw before table+graph writes — cleared (C4 after C3)
 
 ---
 
@@ -620,20 +648,20 @@ App env (`SURREAL_URL`, WS) and kit env (`SURREALDB_HOST`, HTTP) may differ by p
 - Geo-referenced / distorted map projections
 - Real-time multiplayer editing
 - Replacing Surreal session/auth
-- Overlay admin before table CRUD (C1) works
+- Overlay admin before table CRUD (C1) works — **cleared**
 - Header search until embeddings service + data exist (N9 deferred)
-- Map geometry editors before table + graph wire persist
+- Map geometry editors before table + graph wire persist — **cleared** (C4.0 assign shipped; C4.1 editor next)
 
 ---
 
 ## Open / follow-ups (non-blocking)
 
 1. Confirm `connects` OUT to `rents` as the “output” story vs separate outputs table
-2. Sample polygon/point seed coords in metric plane for map fixtures
-3. Whether `shops` ever appear on map (v1: table only)
-4. Floor-plan image fields on `levels` when assets exist
-5. Embeddings service contract for N9 (fields, index, latency, auth)
-6. Surreal permissions: ensure EDITOR can MERGE/CREATE/DELETE / RELATE on domain tables
-7. Composite FK sort keys (`sortKey` from display parts) when SVAR needs header multi-key
-8. C1 record picker reuses `formatRecordLabel` / label index (write path stays RecordIds)
-9. Record `sort` default (config string) is client-side only — confirm SVAR header marks match on table reopen
+2. Whether `shops` ever appear on map (v1: table only — assign may still write rents)
+3. Floor-plan **image** fields on `levels` when raster assets exist (linework is `geometry` now)
+4. Embeddings service contract for N9 (fields, index, latency, auth)
+5. Surreal permissions: ensure EDITOR can MERGE/CREATE/DELETE / RELATE on domain tables
+6. Composite FK sort keys (`sortKey` from display parts) when SVAR needs header multi-key
+7. Record `sort` default (config string) is client-side only — confirm SVAR header marks match on table reopen
+8. C4.1: OL Modify/Draw interactions, clear-geometry, cross-level move policy
+9. Seed or sync pipeline: collapse `static/geo/*/base.geojson` → `levels.geometry`
