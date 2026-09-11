@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { DEFAULT_GRAPH_LAYOUT } from '$lib/config/merge';
 import type { ResolvedConfig, ResolvedEntity, ResolvedMapLayer } from '$lib/config/types';
-import { geometryBBox, normalizeGeometry, toMap } from './to-map';
+import { geometryBBox, geometryKey, normalizeGeometry, toMap } from './to-map';
 
 function field(name: string, type = 'string') {
 	return {
@@ -168,15 +168,74 @@ describe('normalizeGeometry', () => {
 		expect(
 			normalizeGeometry({
 				type: 'LineString',
-				coordinates: [
-					[0, 0],
-					[1, 1]
-				]
+				coordinates: [[0, 0]]
 			})
 		).toEqual({
 			kind: 'empty'
 		});
 		expect(normalizeGeometry('not-geometry')).toEqual({ kind: 'empty' });
+	});
+
+		it('normalizes LineString and MultiLineString', () => {
+			expect(
+				normalizeGeometry({
+					type: 'LineString',
+					coordinates: [
+						[0, 0],
+						[1, 1]
+					]
+				})
+			).toEqual({
+				kind: 'line',
+				paths: [
+					[
+						[0, 0],
+						[1, 1]
+					]
+				]
+			});
+			const multi = normalizeGeometry({
+				type: 'MultiLineString',
+				coordinates: [
+					[
+						[0, 0],
+						[2, 0]
+					],
+					[
+						[0, 1],
+						[2, 1]
+					]
+				]
+			});
+			expect(multi.kind).toBe('line');
+			if (multi.kind === 'line') {
+				expect(multi.paths).toHaveLength(2);
+				expect(geometryBBox(multi)).toEqual([0, 0, 2, 1]);
+			}
+		});
+});
+
+	describe('geometryKey', () => {
+	it('returns empty string for empty geometry', () => {
+		expect(geometryKey({ kind: 'empty' })).toBe('');
+	});
+
+	it('fingerprints points with rounded coords', () => {
+		expect(geometryKey({ kind: 'point', x: 1.0000004, y: 2.0000004 })).toBe(
+			geometryKey({ kind: 'point', x: 1, y: 2 })
+		);
+	});
+
+	it('fingerprints polygons consistently', () => {
+		const a = normalizeGeometry(polyGeom);
+		const b = normalizeGeometry({
+			...polyGeom,
+			coordinates: polyGeom.coordinates.map((ring) =>
+				ring.map(([x, y]) => [x + 1e-9, y - 1e-9] as [number, number])
+			)
+		});
+		expect(geometryKey(a)).toBe(geometryKey(b));
+		expect(geometryKey(a).startsWith('g:')).toBe(true);
 	});
 });
 

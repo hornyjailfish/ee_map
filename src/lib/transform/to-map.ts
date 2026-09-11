@@ -10,6 +10,8 @@ import { normalizeRecordId } from './to-table';
 export type NormalizedGeometry =
 	| { kind: 'point'; x: number; y: number }
 	| { kind: 'polygon'; rings: Array<Array<[number, number]>> }
+	/** One or more polylines (GeoJSON LineString / MultiLineString). */
+	| { kind: 'line'; paths: Array<Array<[number, number]>> }
 	| { kind: 'empty' };
 
 export type MapFeature = {
@@ -43,13 +45,28 @@ export type MapViewModel = {
 
 /**
  * Normalize Surreal / GeoJSON-ish geometry into metric XY kinds.
- * Accepts Point and Polygon (and defensive case variants).
+ * Accepts Point, Polygon, LineString, MultiLineString (case-insensitive).
  * Unknown / invalid → `{ kind: 'empty' }`.
  */
 export function normalizeGeometry(value: unknown): NormalizedGeometry {
 	if (value == null || typeof value !== 'object') return { kind: 'empty' };
 
 	const obj = value as Record<string, unknown>;
+
+	// Surreal SDK Geometry* values expose GeoJSON via toJSON(), have a coordinates
+	// getter, but no own `type` — must call toJSON before treating as plain GeoJSON.
+	if (
+		typeof (obj as { toJSON?: unknown }).toJSON === 'function' &&
+		typeof obj.type !== 'string'
+	) {
+		try {
+			const json = (obj as { toJSON: () => unknown }).toJSON();
+			// Guard against pathological toJSON() returning the same object
+			if (json !== value) return normalizeGeometry(json);
+		} catch {
+			// fall through
+		}
+	}
 
 	// Feature wrapper
 	if (typeof obj.type === 'string' && obj.type.toLowerCase() === 'feature' && 'geometry' in obj) {
@@ -59,7 +76,7 @@ export function normalizeGeometry(value: unknown): NormalizedGeometry {
 	const typeRaw = typeof obj.type === 'string' ? obj.type.toLowerCase() : null;
 	const coordinates = obj.coordinates;
 
-	// Surreal sometimes nests under `geometry`
+	// Nested geometry bag (without a type of its own)
 	if (!typeRaw && 'geometry' in obj) {
 		return normalizeGeometry(obj.geometry);
 	}
@@ -74,6 +91,18 @@ export function normalizeGeometry(value: unknown): NormalizedGeometry {
 		const rings = parsePolygonRings(coordinates);
 		if (!rings || rings.length === 0) return { kind: 'empty' };
 		return { kind: 'polygon', rings };
+	}
+
+	if (typeRaw === 'linestring') {
+		const path = parseLinePath(coordinates);
+		if (!path) return { kind: 'empty' };
+		return { kind: 'line', paths: [path] };
+	}
+
+	if (typeRaw === 'multilinestring') {
+		const paths = parseMultiLinePaths(coordinates);
+		if (!paths || paths.length === 0) return { kind: 'empty' };
+		return { kind: 'line', paths };
 	}
 
 	// Bare coordinate pair → point
@@ -104,6 +133,8 @@ export function geometryToGeoJSON(
 ):
 	| { type: 'Point'; coordinates: [number, number] }
 	| { type: 'Polygon'; coordinates: Array<Array<[number, number]>> }
+	| { type: 'LineString'; coordinates: Array<[number, number]> }
+	| { type: 'MultiLineString'; coordinates: Array<Array<[number, number]>> }
 	| null {
 	if (geometry.kind === 'point') {
 		return { type: 'Point', coordinates: [geometry.x, geometry.y] };
@@ -111,7 +142,42 @@ export function geometryToGeoJSON(
 	if (geometry.kind === 'polygon') {
 		return { type: 'Polygon', coordinates: geometry.rings };
 	}
+	if (geometry.kind === 'line') {
+		if (geometry.paths.length === 1) {
+			return { type: 'LineString', coordinates: geometry.paths[0]! };
+		}
+		return { type: 'MultiLineString', coordinates: geometry.paths };
+	}
 	return null;
+}
+
+/** Coordinate rounding for stable fingerprints across serialize/round-trip. */
+const GEOM_KEY_DECIMALS = 6;
+
+function roundCoord(n: number): number {
+	const f = 10 ** GEOM_KEY_DECIMALS;
+	return Math.round(n * f) / f;
+}
+
+/**
+ * Canonical fingerprint for geometry equality (assign UI: mark used source features).
+ * Empty → empty string. Points/polygons rounded so DB ↔ geojson matches survive float noise.
+ */
+export function geometryKey(g: NormalizedGeometry): string {
+	if (g.kind === 'empty') return '';
+	if (g.kind === 'point') {
+		return `p:${roundCoord(g.x)},${roundCoord(g.y)}`;
+	}
+	if (g.kind === 'line') {
+		const paths = g.paths
+			.map((path) => path.map(([x, y]) => `${roundCoord(x)},${roundCoord(y)}`).join(';'))
+			.join('|');
+		return `l:${paths}`;
+	}
+	const rings = g.rings
+		.map((ring) => ring.map(([x, y]) => `${roundCoord(x)},${roundCoord(y)}`).join(';'))
+		.join('|');
+	return `g:${rings}`;
 }
 
 /** Axis-aligned bbox [minX, minY, maxX, maxY] in map units, or null if empty. */
@@ -122,14 +188,16 @@ export function geometryBBox(g: NormalizedGeometry): [number, number, number, nu
 		return [g.x, g.y, g.x, g.y];
 	}
 
+	const paths = g.kind === 'polygon' ? g.rings : g.paths;
+
 	let minX = Infinity;
 	let minY = Infinity;
 	let maxX = -Infinity;
 	let maxY = -Infinity;
 	let any = false;
 
-	for (const ring of g.rings) {
-		for (const [x, y] of ring) {
+	for (const path of paths) {
+		for (const [x, y] of path) {
 			any = true;
 			if (x < minX) minX = x;
 			if (y < minY) minY = y;
@@ -197,7 +265,10 @@ function buildLayerView(
 		const geometry = normalizeGeometry(row[layer.geometryField]);
 		if (geometry.kind === 'empty') continue;
 
-		const levelId = levelFromRow(row[layer.levelField]);
+		// Levels floor plan: row is the level itself (no FK field)
+		const levelId = layer.levelField
+			? levelFromRow(row[layer.levelField])
+			: levelFromRow(row.id);
 
 		if (levelFilter !== null) {
 			if (levelId === null || levelId !== levelFilter) continue;
@@ -361,6 +432,27 @@ function parsePolygonRings(value: unknown): Array<Array<[number, number]>> | nul
 	}
 
 	return rings.length > 0 ? rings : null;
+}
+
+function parseLinePath(value: unknown): Array<[number, number]> | null {
+	if (!Array.isArray(value) || value.length < 2) return null;
+	const path: Array<[number, number]> = [];
+	for (const pos of value) {
+		const xy = parsePosition(pos);
+		if (!xy) continue;
+		path.push(xy);
+	}
+	return path.length >= 2 ? path : null;
+}
+
+function parseMultiLinePaths(value: unknown): Array<Array<[number, number]>> | null {
+	if (!Array.isArray(value) || value.length === 0) return null;
+	const paths: Array<Array<[number, number]>> = [];
+	for (const lineRaw of value) {
+		const path = parseLinePath(lineRaw);
+		if (path) paths.push(path);
+	}
+	return paths.length > 0 ? paths : null;
 }
 
 function toFiniteNumber(value: unknown): number | null {
