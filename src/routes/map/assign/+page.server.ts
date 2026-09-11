@@ -1,7 +1,7 @@
 import { error, fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { z } from 'zod';
-import type { ResolvedConfig, ResolvedEntity } from '$lib/config/types';
+import type { ResolvedConfig } from '$lib/config/types';
 import { canEdit } from '$lib/roles';
 import { getUserRoles } from '$lib/server/catalog';
 import { resolveAppConfig } from '$lib/server/config';
@@ -20,7 +20,11 @@ import {
 	type GeoAssignLayer,
 	type GeoSourceMeta
 } from '$lib/server/geo-files';
-import { displayValue, entityByName, normalizeRecordId } from '$lib/transform/to-table';
+import { geometryKey, normalizeGeometry } from '$lib/transform/to-map';
+import { entityByName, normalizeRecordId } from '$lib/transform/to-table';
+import type { AssignTableOption } from './assign-types';
+
+export type { AssignRecordRow, AssignTableOption } from './assign-types';
 
 const assignSchema = z.object({
 	table: z.string().default(''),
@@ -29,24 +33,6 @@ const assignSchema = z.object({
 	/** Optional level record id to set alongside geometry when the table has a level field. */
 	level: z.string().nullable().default(null)
 });
-
-export type AssignTableOption = {
-	name: string;
-	label: string;
-	geometryField: string;
-	levelField: string | null;
-	/** Visible field names for the record list (id always first). */
-	fields: Array<{ name: string; label: string; type: string }>;
-};
-
-export type AssignRecordRow = {
-	id: string;
-	/** Display cells for visible non-geometry fields. */
-	cells: Record<string, unknown>;
-	/** Compact geometry status for the list. */
-	hasGeometry: boolean;
-	levelId: string | null;
-};
 
 export type AssignPageData = {
 	sources: GeoSourceMeta[];
@@ -57,7 +43,11 @@ export type AssignPageData = {
 	/** Tables that can receive geometry. */
 	tables: AssignTableOption[];
 	table: string | null;
-	records: AssignRecordRow[];
+	/**
+	 * Geo feature ids whose geometry fingerprint matches a row already stored
+	 * on the selected table (survives reload via DB match, not client cache).
+	 */
+	assignedFeatureIds: string[];
 	levels: Array<{ id: string; name?: string; ord?: number }>;
 	error: string | null;
 };
@@ -70,11 +60,42 @@ function emptyPage(partial?: Partial<AssignPageData>): AssignPageData {
 		layer: null,
 		tables: [],
 		table: null,
-		records: [],
+		assignedFeatureIds: [],
 		levels: [],
 		error: null,
 		...partial
 	};
+}
+
+/** Match static geo features to geometries already stored on `table`. */
+async function matchAssignedFeatureIds(
+	session: NonNullable<App.Locals['session']>,
+	tableOpt: AssignTableOption | undefined,
+	layer: GeoAssignLayer | null
+): Promise<string[]> {
+	if (!tableOpt || !layer || layer.features.length === 0) return [];
+
+	let rows: Array<Record<string, unknown>>;
+	try {
+		rows = await queryEntities(session, tableOpt.name, { limit: 5000 });
+	} catch {
+		return [];
+	}
+
+	const usedKeys = new Set<string>();
+	const geomName = tableOpt.geometryField;
+	for (const row of rows) {
+		const key = geometryKey(normalizeGeometry(row[geomName]));
+		if (key) usedKeys.add(key);
+	}
+	if (usedKeys.size === 0) return [];
+
+	const assigned: string[] = [];
+	for (const feature of layer.features) {
+		const key = geometryKey(feature.geometry);
+		if (key && usedKeys.has(key)) assigned.push(feature.id);
+	}
+	return assigned;
 }
 
 /** Entities with an updatable geometry field (map-enabled preferred). */
@@ -129,46 +150,6 @@ function pickDefaultSource(sources: GeoSourceMeta[]): { folder: string; name: st
 		sources.find((s) => s.name === 'shops') ??
 		sources[0];
 	return preferred ? { folder: preferred.folder, name: preferred.name } : null;
-}
-
-function mapRecords(
-	_entity: ResolvedEntity,
-	tableOpt: AssignTableOption,
-	rows: Array<Record<string, unknown>>
-): AssignRecordRow[] {
-	const geomName = tableOpt.geometryField;
-	const levelName = tableOpt.levelField;
-	const fieldNames = tableOpt.fields.map((f) => f.name);
-
-	return rows.map((row) => {
-		const id = normalizeRecordId(row.id);
-		const cells: Record<string, unknown> = {};
-		for (const name of fieldNames) {
-			const raw = row[name];
-			if (name === levelName) {
-				cells[name] = normalizeRecordId(raw) || null;
-			} else if (typeof raw === 'object' && raw !== null && !Array.isArray(raw)) {
-				const asId = normalizeRecordId(raw);
-				cells[name] = asId && asId.includes(':') ? asId : displayValue(raw);
-			} else {
-				cells[name] = displayValue(raw);
-			}
-		}
-
-		const geom = row[geomName];
-		const hasGeometry =
-			geom != null &&
-			typeof geom === 'object' &&
-			'type' in (geom as object) &&
-			(geom as { type?: unknown }).type != null;
-
-		return {
-			id,
-			cells,
-			hasGeometry,
-			levelId: levelName ? normalizeRecordId(row[levelName]) || null : null
-		};
-	});
 }
 
 function mapLevels(
@@ -318,20 +299,6 @@ export const load: PageServerLoad = async ({ parent, locals, url }): Promise<Ass
 		}
 	}
 
-	let records: AssignRecordRow[] = [];
-	const tableOpt = table ? tables.find((t) => t.name === table) : null;
-	const entity = table ? entityByName(config, table) : null;
-
-	if (tableOpt && entity) {
-		try {
-			const rows = await queryEntities(locals.session, tableOpt.name);
-			records = mapRecords(entity, tableOpt, rows);
-		} catch (err) {
-			const message = err instanceof Error ? err.message : 'Failed to load records';
-			loadError = loadError ? `${loadError}; ${message}` : message;
-		}
-	}
-
 	let levels: AssignPageData['levels'] = [];
 	const levelsTable = config.map.levelsTable;
 	if (isValidTableName(levelsTable)) {
@@ -342,6 +309,9 @@ export const load: PageServerLoad = async ({ parent, locals, url }): Promise<Ass
 		}
 	}
 
+	const tableOpt = table ? tables.find((t) => t.name === table) : undefined;
+	const assignedFeatureIds = await matchAssignedFeatureIds(locals.session, tableOpt, layer);
+
 	return {
 		sources,
 		sourceFolder,
@@ -349,7 +319,7 @@ export const load: PageServerLoad = async ({ parent, locals, url }): Promise<Ass
 		layer,
 		tables,
 		table,
-		records,
+		assignedFeatureIds,
 		levels,
 		error: loadError
 	};

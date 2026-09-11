@@ -11,12 +11,14 @@
 	import { Input } from '$lib/components/ui/input/index.js';
 	import * as NativeSelect from '$lib/components/ui/native-select/index.js';
 	import { Spinner } from '$lib/components/ui/spinner/index.js';
+	import * as Switch from '$lib/components/ui/switch/index.js';
 	import AssignMapView from '$lib/components/map/AssignMapView.svelte';
 	import ViewLoadingOverlay from '$lib/components/view/ViewLoadingOverlay.svelte';
 	import { ApiError, postFormAction } from '$lib/client/http';
 	import { geometryToGeoJSON } from '$lib/transform/to-map';
 	import CircleAlertIcon from '@lucide/svelte/icons/circle-alert';
 	import type { PageData } from './$types';
+	import { searchAssignRecords } from './assign.remote';
 
 	let { data }: { data: PageData } = $props();
 
@@ -24,9 +26,15 @@
 	const layer = $derived(data.layer);
 	const tables = $derived(data.tables);
 	const table = $derived(data.table);
-	const records = $derived(data.records);
 	const levels = $derived(data.levels);
 	const error = $derived(data.error);
+	/** Prefer server list; after a successful assign, merge optimistic ids until reload lands. */
+	let optimisticAssignedIds = $state<string[]>([]);
+	const assignedFeatureIds = $derived(
+		Array.from(new Set([...data.assignedFeatureIds, ...optimisticAssignedIds]))
+	);
+	const assignedSet = $derived(new Set(assignedFeatureIds));
+	let hideAssigned = $state(false);
 
 	const tableOpt = $derived(tables.find((t) => t.name === table) ?? null);
 
@@ -37,10 +45,28 @@
 	let selectedFeatureId = $state<string | null>(null);
 	let selectedRecordId = $state<string | null>(null);
 	let recordFilter = $state('');
+	/** Debounced search needle sent to Surreal (via remote query). */
+	let searchQ = $state('');
 	let assignLevelId = $state<string>('');
 	let writePending = $state(false);
 	let writeError = $state<string | null>(null);
 	let writeOk = $state<string | null>(null);
+
+	$effect(() => {
+		const q = recordFilter;
+		const handle = setTimeout(() => {
+			searchQ = q;
+		}, 200);
+		return () => clearTimeout(handle);
+	});
+
+	const recordsQuery = $derived(
+		table ? searchAssignRecords({ table, q: searchQ }) : null
+	);
+	const searchResult = $derived(
+		recordsQuery ? await recordsQuery : { table: null as string | null, records: [] }
+	);
+	const records = $derived(searchResult.records);
 
 	// Reset selections when source / table changes via URL
 	$effect(() => {
@@ -50,6 +76,9 @@
 		selectedRecordId = null;
 		writeError = null;
 		writeOk = null;
+		recordFilter = '';
+		searchQ = '';
+		optimisticAssignedIds = [];
 	});
 
 	// Pre-fill level from selected record or from folder key matching a level
@@ -75,23 +104,18 @@
 	});
 
 	const selectedFeature = $derived(layer?.features.find((f) => f.id === selectedFeatureId) ?? null);
+	const selectedIsAssigned = $derived(
+		selectedFeatureId != null && assignedSet.has(selectedFeatureId)
+	);
 
 	const selectedRecord = $derived(records.find((r) => r.id === selectedRecordId) ?? null);
 
-	const filteredRecords = $derived.by(() => {
-		const q = recordFilter.trim().toLowerCase();
-		if (!q) return records;
-		return records.filter((r) => {
-			if (r.id.toLowerCase().includes(q)) return true;
-			for (const v of Object.values(r.cells)) {
-				if (v == null) continue;
-				if (String(v).toLowerCase().includes(q)) return true;
-			}
-			return false;
-		});
-	});
-
 	const canAssign = $derived(Boolean(selectedFeature && selectedRecord && table && !writePending));
+
+	const assignedCount = $derived(assignedFeatureIds.length);
+	const freeCount = $derived(
+		layer ? Math.max(0, layer.features.length - assignedCount) : 0
+	);
 
 	function levelLabel(id: string | null | undefined): string {
 		if (!id) return '—';
@@ -156,6 +180,11 @@
 				level: tableOpt?.levelField && assignLevelId ? assignLevelId : null
 			});
 			writeOk = `Assigned geometry to ${selectedRecord.id}`;
+			if (selectedFeatureId && !optimisticAssignedIds.includes(selectedFeatureId)) {
+				optimisticAssignedIds = [...optimisticAssignedIds, selectedFeatureId];
+			}
+			selectedFeatureId = null;
+			await recordsQuery?.refresh();
 			await invalidateAll();
 		} catch (err) {
 			writeError = err instanceof ApiError ? err.message : 'Assign failed';
@@ -231,8 +260,15 @@
 
 				{#if layer}
 					<span class="pb-2 text-xs text-muted-foreground tabular-nums">
-						{layer.features.length} feature{layer.features.length === 1 ? '' : 's'}
+						{freeCount} free · {assignedCount} assigned · {layer.features.length} total
 					</span>
+					<label
+						class="flex items-center gap-2 pb-2 text-xs text-muted-foreground"
+						for="hide-assigned"
+					>
+						<Switch.Root id="hide-assigned" size="sm" bind:checked={hideAssigned} />
+						Hide assigned
+					</label>
 				{/if}
 			</div>
 
@@ -247,6 +283,8 @@
 					<AssignMapView
 						{layer}
 						selectedId={selectedFeatureId}
+						assignedIds={assignedFeatureIds}
+						{hideAssigned}
 						onSelect={(id) => {
 							selectedFeatureId = id;
 							writeOk = null;
@@ -259,6 +297,11 @@
 							<p class="font-medium">Selected feature</p>
 							<p class="text-muted-foreground">{selectedFeature.id}</p>
 							<p class="text-muted-foreground">{selectedFeature.geometry.kind}</p>
+							{#if selectedIsAssigned}
+								<p class="mt-1 text-amber-700 dark:text-amber-400">
+									Already assigned (geometry matches a DB row)
+								</p>
+							{/if}
 						</div>
 					{/if}
 				{:else}
@@ -290,10 +333,10 @@
 				</Field.Field>
 
 				<Field.Field>
-					<Field.Label for="record-filter">Filter records</Field.Label>
+					<Field.Label for="record-filter">Search records</Field.Label>
 					<Input
 						id="record-filter"
-						placeholder="Search name, id…"
+						placeholder="Fuzzy search name, id…"
 						bind:value={recordFilter}
 						autocomplete="off"
 					/>
@@ -322,11 +365,15 @@
 			</div>
 
 			<div class="min-h-0 flex-1 overflow-y-auto p-2">
-				{#if filteredRecords.length === 0}
-					<p class="px-2 py-4 text-center text-xs text-muted-foreground">No records</p>
+				{#if !table}
+					<p class="px-2 py-4 text-center text-xs text-muted-foreground">No table selected</p>
+				{:else if records.length === 0}
+					<p class="px-2 py-4 text-center text-xs text-muted-foreground">
+						{searchQ.trim() ? 'No matches' : 'No records'}
+					</p>
 				{:else}
 					<ul class="flex flex-col gap-1.5" role="listbox" aria-label="Database records">
-						{#each filteredRecords as rec (rec.id)}
+						{#each records as rec (rec.id)}
 							{@const active = rec.id === selectedRecordId}
 							<li>
 								<button

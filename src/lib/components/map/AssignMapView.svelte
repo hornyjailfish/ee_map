@@ -24,11 +24,22 @@
 		layer: GeoAssignLayer;
 		/** Currently selected source feature id (`geo:…`). */
 		selectedId?: string | null;
+		/** Feature ids whose geometry already exists on a DB record for the active table. */
+		assignedIds?: readonly string[];
+		/** When true, skip adding assigned features to the map. */
+		hideAssigned?: boolean;
 		onSelect?: (featureId: string | null) => void;
 		class?: string;
 	};
 
-	let { layer, selectedId = null, onSelect, class: className = '' }: Props = $props();
+	let {
+		layer,
+		selectedId = null,
+		assignedIds = [],
+		hideAssigned = false,
+		onSelect,
+		class: className = ''
+	}: Props = $props();
 
 	const FALLBACK_EXTENT: [number, number, number, number] = [-1000, -1000, 1000, 1000];
 
@@ -104,9 +115,15 @@
 
 		let lastExtentKey = initialExtent.join(',');
 		const selectBox: { id: string | null } = { id: untrack(() => selectedId) };
+		const assignedBox: { ids: Set<string> } = {
+			ids: new Set(untrack(() => assignedIds))
+		};
 
 		$effect(() => {
 			const l = layer;
+			const hide = hideAssigned;
+			const assigned = new Set(assignedIds);
+			assignedBox.ids = assigned;
 
 			const existing = [...map.getLayers().getArray()];
 			for (const olLayer of existing) {
@@ -115,6 +132,7 @@
 
 			const source = new VectorSource();
 			for (const mf of l.features) {
+				if (hide && assigned.has(mf.id)) continue;
 				const olFeature = featureToOl(mf);
 				if (olFeature) source.addFeature(olFeature);
 			}
@@ -124,9 +142,11 @@
 				zIndex: 1,
 				style: (olFeature: FeatureLike) => {
 					const id = olFeature.getId();
-					const focused = id != null && String(id) === selectBox.id;
+					const idStr = id != null ? String(id) : '';
+					const focused = idStr !== '' && idStr === selectBox.id;
+					const isAssigned = idStr !== '' && assignedBox.ids.has(idStr);
 					// Use rents palette — assign source geometries are often shop/rent polygons
-					return styleFor('rents', { focused });
+					return styleFor('rents', { focused, assigned: isAssigned });
 				}
 			});
 			map.addLayer(vector);
