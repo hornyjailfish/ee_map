@@ -5,7 +5,7 @@ DEFINE INDEX unique_electric_room_name
 
 DEFINE INDEX unique_areas
     ON TABLE rents
-    COLUMNS name, geometry
+    COLUMNS name
     UNIQUE;
 
 DEFINE INDEX unique_shops

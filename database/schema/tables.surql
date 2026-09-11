@@ -1,6 +1,8 @@
 DEFINE TABLE levels SCHEMAFULL PERMISSIONS FULL;
 DEFINE FIELD name ON levels TYPE string;
 DEFINE FIELD ord ON levels TYPE int DEFAULT 1;
+# Floor-plan background (base.geojson linework collapsed to MultiLineString)
+DEFINE FIELD OVERWRITE geometry ON levels TYPE geometry<multiline> | none;
 
 # only rentable areas
 DEFINE TABLE rents SCHEMAFULL PERMISSIONS FULL;
@@ -48,3 +50,4 @@ DEFINE FIELD marker ON embeddings TYPE geometry<point>;
 DEFINE FIELD image ON embeddings TYPE string | none ASSERT $value IS NONE OR <regex> '^f"images:/.*"$' = $value;
 
 # app_config lives in view_configs.surql (SCHEMALESS overlay document).
+
