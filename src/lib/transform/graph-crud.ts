@@ -34,6 +34,10 @@ export type GraphCrudMeta = {
 	createByParentTable: Record<string, GraphChildCreateSpec>;
 	/** Entity table → STRUCTURE delete allowed. */
 	deleteByTable: Record<string, boolean>;
+	/** Entity table → STRUCTURE update allowed. */
+	updateByTable: Record<string, boolean>;
+	/** Entity table → writable form columns (node edit modal). */
+	editByTable: Record<string, TableColumn[]>;
 };
 
 /**
@@ -43,11 +47,20 @@ export type GraphCrudMeta = {
 export function buildGraphCrudMeta(config: ResolvedConfig): GraphCrudMeta {
 	const createByParentTable: Record<string, GraphChildCreateSpec> = {};
 	const deleteByTable: Record<string, boolean> = {};
+	const updateByTable: Record<string, boolean> = {};
+	const editByTable: Record<string, TableColumn[]> = {};
 
 	for (const entity of config.tables) {
 		deleteByTable[entity.name] = Boolean(entity.permissions.delete);
+		updateByTable[entity.name] = Boolean(entity.permissions.update);
 
 		const graph = entity.graph;
+		if (graph && graph.role !== 'ignore') {
+			editByTable[entity.name] = buildColumns(entity).filter(
+				(c) => c.id !== 'id' && isWritableFormColumn(c)
+			);
+		}
+
 		if (!graph || graph.role === 'ignore' || !graph.parentField) continue;
 
 		const parentField = entity.fields.find((f) => f.name === graph.parentField);
@@ -76,7 +89,7 @@ export function buildGraphCrudMeta(config: ResolvedConfig): GraphCrudMeta {
 		}
 	}
 
-	return { createByParentTable, deleteByTable };
+	return { createByParentTable, deleteByTable, updateByTable, editByTable };
 	}
 
 	function isWritableFormColumn(c: TableColumn): boolean {

@@ -38,7 +38,11 @@
 		lockedFields?: string[];
 		submitting?: boolean;
 		error?: string | null;
-		/** Called with non-empty trimmed field values on Create. */
+		/** Submit button label (defaults to "Create"). */
+		submitLabel?: string;
+		/** Error alert title (defaults to "Create failed"). */
+		errorTitle?: string;
+		/** Called with non-empty trimmed field values on submit. */
 		onSubmit?: (values: Record<string, string>) => void | Promise<void>;
 	};
 
@@ -52,6 +56,8 @@
 		lockedFields = [],
 		submitting = false,
 		error = null,
+		submitLabel = 'Create',
+		errorTitle = 'Create failed',
 		onSubmit
 	}: Props = $props();
 
@@ -159,7 +165,7 @@
 		{#if error}
 			<Alert.Root variant="destructive">
 				<CircleAlertIcon />
-				<Alert.Title>Create failed</Alert.Title>
+				<Alert.Title>{errorTitle}</Alert.Title>
 				<Alert.Description>{error}</Alert.Description>
 			</Alert.Root>
 		{/if}
@@ -174,7 +180,7 @@
 				{#if submitting}
 					<Spinner class="size-3.5" data-icon="inline-start" />
 				{/if}
-				Create
+				{submitLabel}
 			</Button>
 		</Dialog.Footer>
 	</Dialog.Content>

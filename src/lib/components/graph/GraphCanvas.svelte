@@ -28,14 +28,17 @@
 	import { Spinner } from '$lib/components/ui/spinner/index.js';
 	import AddRowModal from '$lib/components/table/AddRowModal.svelte';
 	import type { GraphChildCreateSpec, GraphCrudMeta } from '$lib/transform/graph-crud';
+	import type { TableColumn } from '$lib/transform/to-table';
 	import type { GraphEdge, GraphNode, GraphViewModel } from '$lib/transform/to-graph';
 	import { graphEdgeSignature, toFlowEdges, toMeasureNodes } from './graph-flow';
 	import GraphLayoutRunner from './GraphLayoutRunner.svelte';
 	import {
 		setGraphNodeActions,
 		type GraphNodeDeleteRef,
+		type GraphNodeEditRef,
 		type GraphNodeParentRef
 	} from './graph-node-actions';
+	import { setGraphNodeUi, type GraphNodeUiFlags } from './graph-node-ui';
 
 	type Props = {
 		graph: GraphViewModel;
@@ -61,10 +64,27 @@
 
 	type Phase = 'measuring' | 'layouting' | 'ready';
 
+	/** Per-node UI overrides — survive ELK relayouts that rebuild nodes from `graph`. */
+	let nodeUiFlags = $state<Record<string, GraphNodeUiFlags>>({});
+
+	function applyNodeUiFlags(next: GraphNode[]): GraphNode[] {
+		return next.map((n) => {
+			const flags = nodeUiFlags[n.id];
+			if (!flags) return n;
+			return {
+				...n,
+				...(flags.selectable !== undefined ? { selectable: flags.selectable } : {}),
+				...(flags.draggable !== undefined ? { draggable: flags.draggable } : {})
+			};
+		});
+	}
+
 	// Mount-time only — parent `{#key structureKey}` remounts on node/layout change (not wires).
 	// svelte-ignore state_referenced_locally (intentional: capture initial measure snapshot)
 	let nodes = $state.raw<GraphNode[]>(
-		applyNodeSelection(toMeasureNodes(graph, { canEdit, crud }), appUi.focusedId)
+		applyNodeUiFlags(
+			applyNodeSelection(toMeasureNodes(graph, { canEdit, crud }), appUi.focusedId)
+		)
 	);
 	// svelte-ignore state_referenced_locally (intentional: capture initial measure snapshot)
 	let edges = $state.raw<GraphEdge[]>(toFlowEdges(graph));
@@ -72,8 +92,10 @@
 	let layoutError = $state<string | null>(null);
 	let writeError = $state<string | null>(null);
 	let writePending = $state(false);
-	/** Bumped by the Layout button to re-run ELK with current leaf measured sizes. */
+	/** Bumped to re-run ELK with current leaf measured sizes (full graph or subtree). */
 	let layoutRequest = $state(0);
+	/** Captured with the latest `layoutRequest` bump (root + fit). */
+	let layoutRequestOpts = $state<{ rootId?: string | null; fit?: boolean } | null>(null);
 	/** Last server edge set we applied (skip no-op / mount double-apply). */
 	// svelte-ignore state_referenced_locally (intentional: baseline for this mount)
 	let lastEdgeSig = graphEdgeSignature(graph);
@@ -102,10 +124,45 @@
 			: 'Fill required fields, then create the record.'
 	);
 
+	/** Edit-node modal — same form as table AddRowModal, pre-filled from node.values. */
+	let editOpen = $state(false);
+	let editTarget = $state<GraphNodeEditRef | null>(null);
+	let editFields = $state<TableColumn[]>([]);
+	let editRecordOptions = $state<Record<string, EditorOption[]>>({});
+	let editInitialValues = $state<Record<string, string>>({});
+	let editSubmitting = $state(false);
+	let editError = $state<string | null>(null);
+
+	const editTitle = $derived(editTarget ? `Edit ${editTarget.label}` : 'Edit node');
+	const editDescription = $derived(
+		editTarget ? `Update fields for ${editTarget.label}.` : 'Update the record fields.'
+	);
+
 	setGraphNodeActions({
 		requestAddChild,
+		requestEditNode,
 		requestDeleteNode
 	});
+
+	setGraphNodeUi({
+		setSelectable,
+		setDraggable,
+		layoutNode
+	});
+
+	function setSelectable(id: string, value: boolean) {
+		nodeUiFlags[id] = { ...nodeUiFlags[id], selectable: value };
+		nodes = nodes.map((n) => (n.id === id ? { ...n, selectable: value } : n));
+	}
+
+	function setDraggable(id: string, value: boolean) {
+		nodeUiFlags[id] = { ...nodeUiFlags[id], draggable: value };
+		nodes = nodes.map((n) => (n.id === id ? { ...n, draggable: value } : n));
+	}
+
+	function layoutNode(id: string) {
+		requestLayout({ rootId: id, fit: false });
+	}
 
 	function requestAddChild(parent: GraphNodeParentRef) {
 		if (!canEdit || !crud) return;
@@ -143,6 +200,39 @@
 		}
 	}
 
+	function requestEditNode(node: GraphNodeEditRef) {
+		if (!canEdit || !crud) return;
+		const fields = crud.editByTable[node.table];
+		if (!fields?.length || !crud.updateByTable[node.table]) return;
+		editTarget = node;
+		editFields = fields;
+		editRecordOptions = recordOptionsByTable[node.table] ?? {};
+		editInitialValues = node.values ?? {};
+		editError = null;
+		writeError = null;
+		editOpen = true;
+	}
+
+	async function submitEditNode(values: Record<string, string>) {
+		if (!editTarget || editSubmitting) return;
+		try {
+			editSubmitting = true;
+			editError = null;
+			writeError = null;
+			await postFormAction('editNode', {
+				table: editTarget.table,
+				id: editTarget.id,
+				...values
+			});
+			editOpen = false;
+			await invalidateAll();
+		} catch (err) {
+			editError = formatWriteError(err, 'Failed to update node');
+		} finally {
+			editSubmitting = false;
+		}
+	}
+
 	async function requestDeleteNode(node: GraphNodeDeleteRef) {
 		if (!canEdit || !crud?.deleteByTable[node.table] || writePending) return;
 		if (!confirm(`Delete ${node.label} (${node.id})?`)) return;
@@ -163,10 +253,12 @@
 		phase = 'layouting';
 	}
 
-	function onLayoutDone(result: { nodes: GraphNode[]; edges: GraphEdge[] }) {
-		nodes = applyNodeSelection(result.nodes, appUi.focusedId);
-		const stillPending = edges.filter((e) => e.id.startsWith('tmp:'));
-		edges = stillPending.length ? [...result.edges, ...stillPending] : result.edges;
+	function onLayoutDone(result: { nodes: GraphNode[]; edges?: GraphEdge[] }) {
+		nodes = applyNodeUiFlags(applyNodeSelection(result.nodes, appUi.focusedId));
+		if (result.edges) {
+			const stillPending = edges.filter((e) => e.id.startsWith('tmp:'));
+			edges = stillPending.length ? [...result.edges, ...stillPending] : result.edges;
+		}
 		phase = 'ready';
 		layoutError = null;
 	}
@@ -178,15 +270,16 @@
 		edges: edges.filter((e) => !String(e.id).startsWith('tmp:'))
 	}));
 
-	function onLayoutError(message: string, fallback: { nodes: GraphNode[]; edges: GraphEdge[] }) {
+	function onLayoutError(message: string, fallback: { nodes: GraphNode[]; edges?: GraphEdge[] }) {
 		layoutError = message;
-		nodes = applyNodeSelection(fallback.nodes, appUi.focusedId);
-		edges = fallback.edges;
+		nodes = applyNodeUiFlags(applyNodeSelection(fallback.nodes, appUi.focusedId));
+		if (fallback.edges) edges = fallback.edges;
 		phase = 'ready';
 	}
 
-	function requestLayout() {
+	function requestLayout(opts?: { rootId?: string | null; fit?: boolean }) {
 		if (phase === 'layouting' || phase === 'measuring') return;
+		layoutRequestOpts = opts ?? null;
 		layoutRequest += 1;
 	}
 
@@ -473,7 +566,7 @@
 				<CircleAlertIcon />
 				<Alert.Title>Write failed</Alert.Title>
 				<Alert.Description class="flex items-start justify-between gap-2">
-					<span class="min-w-0 flex-1 break-words">{writeError}</span>
+					<span class="min-w-0 flex-1 wrap-break-word">{writeError}</span>
 					<Button
 						type="button"
 						size="sm"
@@ -513,6 +606,10 @@
 		{isValidConnection}
 		proOptions={{ hideAttribution: true }}
 		{onnodeclick}
+		selectionOnDrag
+		panOnDrag={[1]}
+		onselectionchange={({nodes, edges})=>{if(nodes.length == 0) appUi.clearSelection(); if(nodes.length > 0) appUi.setSelected(nodes.map(n => n.id));}}
+		selectNodesOnDrag={true}
 		{onbeforeconnect}
 		{onconnect}
 		{onbeforedelete}
@@ -523,6 +620,7 @@
 			graph={layoutGraph}
 			{nodeUi}
 			{layoutRequest}
+			{layoutRequestOpts}
 			{onLayoutStart}
 			{onLayoutDone}
 			{onLayoutError}
@@ -533,10 +631,10 @@
 				type="button"
 				size="sm"
 				variant="outline"
-				class="bg-background/95 shadow-sm backdrop-blur-sm"
+				class="bg-background/95 shadow-lg backdrop-blur-sm"
 				disabled={layoutDisabled}
 				aria-busy={phase === 'layouting'}
-				onclick={requestLayout}
+				onclick={() => requestLayout()}
 			>
 				{#if phase === 'layouting'}
 					<Spinner class="size-3.5" data-icon="inline-start" />
@@ -547,45 +645,59 @@
 			</Button>
 		</Panel>
 
-		<Background gap={18} size={1} />
+		<Background gap={28} size={4} />
 					<Controls showLock={false} />
-					<MiniMap pannable zoomable class="bg-card!" />
-				</SvelteFlow>
+					<MiniMap pannable zoomable class="bg-accent!" />
+	</SvelteFlow>
 
-				<AddRowModal
-							bind:open={addOpen}
-							title={addTitle}
-							description={addDescription}
-							fields={addSpec?.fields ?? []}
-							recordOptions={addRecordOptions}
-							initialValues={addInitialValues}
-							lockedFields={addLockedFields}
-							submitting={addSubmitting}
-							error={addError}
-							onSubmit={submitAddChild}
-						/>
-			</div>
+		<AddRowModal
+					bind:open={addOpen}
+					title={addTitle}
+					description={addDescription}
+					fields={addSpec?.fields ?? []}
+					recordOptions={addRecordOptions}
+					initialValues={addInitialValues}
+					lockedFields={addLockedFields}
+					submitting={addSubmitting}
+					error={addError}
+					onSubmit={submitAddChild}
+				/>
 
-			<style>
-	.graph-canvas :global(.svelte-flow) {
-		height: 100%;
-		width: 100%;
-	}
+			<AddRowModal
+					bind:open={editOpen}
+					title={editTitle}
+					description={editDescription}
+					fields={editFields}
+					recordOptions={editRecordOptions}
+					initialValues={editInitialValues}
+					submitting={editSubmitting}
+					error={editError}
+					submitLabel="Save"
+					errorTitle="Update failed"
+					onSubmit={submitEditNode}
+				/>
+</div>
 
-	.graph-canvas :global(.svelte-flow__node) {
-		font-family: inherit;
-		width: auto;
-		height: auto;
-		padding: 0;
-		border: none;
-		background: transparent;
-		box-shadow: none;
-		overflow: visible;
-	}
+<style>
+.graph-canvas :global(.svelte-flow) {
+	height: 100%;
+	width: 100%;
+}
 
-	.graph-canvas :global(.svelte-flow__node-room),
-	.graph-canvas :global(.svelte-flow__node-board),
-	.graph-canvas :global(.svelte-flow__node-group) {
-		overflow: visible;
-	}
+.graph-canvas :global(.svelte-flow__node) {
+	font-family: inherit;
+	width: auto;
+	height: auto;
+	padding: 0;
+	border: none;
+	background: transparent;
+	box-shadow: none;
+	overflow: visible;
+}
+
+.graph-canvas :global(.svelte-flow__node-room),
+.graph-canvas :global(.svelte-flow__node-board),
+.graph-canvas :global(.svelte-flow__node-group) {
+	overflow: visible;
+}
 </style>

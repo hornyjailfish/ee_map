@@ -9,6 +9,7 @@ import {
 	isValidTableName,
 	loadRecordOptions,
 	MutateError,
+	patchRecord,
 	queryGraphBundle,
 	relateConnect,
 	type RecordOption,
@@ -30,6 +31,9 @@ const connectSchema = z.object({
 const disconnectSchema = z.object({ relation: z.string().optional(), id: z.string().default('') });
 const addNodeSchema = z.record(z.string(), z.string());
 const deleteNodeSchema = z.object({ table: z.string().default(''), id: z.string().default('') });
+const editNodeSchema = z
+	.object({ table: z.string().default(''), id: z.string().default('') })
+	.catchall(z.string());
 
 export type GraphPageData = {
 	/** Graph without positions; client runs ELK. Null when nothing to show. */
@@ -222,6 +226,24 @@ export const actions: Actions = {
 		try {
 			const entity = await resolveForNodeWrite(locals, fetch, table);
 			await deleteRecord(locals.session!, entity, id);
+			return { ok: true };
+		} catch (error) {
+			return failFromError(error);
+		}
+	},
+
+	editNode: async ({ request, locals, fetch }) => {
+		const parsed = editNodeSchema.safeParse(
+			Object.fromEntries((await request.formData()).entries())
+		);
+		if (!parsed.success) {
+			return fail(400, { code: 'invalid_form', message: 'Invalid form data' });
+		}
+		const { table, id, ...values } = parsed.data;
+
+		try {
+			const entity = await resolveForNodeWrite(locals, fetch, table);
+			await patchRecord(locals.session!, entity, id, values);
 			return { ok: true };
 		} catch (error) {
 			return failFromError(error);

@@ -2,14 +2,27 @@
 	import type { Node, NodeProps } from '@xyflow/svelte';
 	import type { GraphNodeData } from '$lib/transform/to-graph';
 	import GraphNodeToolbar from '../GraphNodeToolbar.svelte';
+	import GraphNodePropsToolbar from '../GraphNodePropsToolbar.svelte';
+	import { getGraphNodeUi } from '../graph-node-ui';
 
 	type RoomNode = Node<GraphNodeData, 'room'>;
-	let { id, data, selected }: NodeProps<RoomNode> = $props();
+	let { id, data, selected, selectable, draggable, ...rest }: NodeProps<RoomNode> = $props();
+
+	const nodeUi = getGraphNodeUi();
+
+	function onDoubleClick(e: MouseEvent) {
+		e.stopPropagation();
+		if (!selectable) nodeUi.setSelectable(id, true);
+	}
+
+	$inspect(rest)
 </script>
 
 <!-- No handles: rooms are containers, not edge endpoints. -->
-<div class={['room-node', selected && 'is-selected']}>
+<!-- svelte-ignore a11y_no_static_element_interactions (node double-click escape hatch for non-selectable nodes) -->
+	<div class={['room-node', selected && 'is-selected']} ondblclick={onDoubleClick}>
 	<GraphNodeToolbar {id} {data} />
+	<GraphNodePropsToolbar {id} {selectable} {draggable} />
 	<div class="room-node__body">
 		<span class="room-node__role">room</span>
 		<span class="room-node__label">{data.label}</span>

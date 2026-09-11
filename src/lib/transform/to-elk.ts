@@ -133,12 +133,47 @@ export type ToElkGraphOptions = {
 	 * Prefer putting layout on GraphViewModel via toGraph.
 	 */
 	layout?: ResolvedGraphLayout;
+	/**
+	 * Layout only this compound node's descendants. The node becomes the ELK root
+	 * (position stays fixed in SF; size updates from ELK). Omit for full-graph layout.
+	 */
+	rootId?: string;
 };
+
+/** `rootId` plus every nested descendant (depth-first). Empty if root is missing. */
+export function subtreeNodeIds(
+	model: Pick<GraphViewModel, 'nodes'>,
+	rootId: string
+): Set<string> {
+	const byId = new Map(model.nodes.map((n) => [n.id, n]));
+	if (!byId.has(rootId)) return new Set();
+
+	const childrenOf = new Map<string, string[]>();
+	for (const node of model.nodes) {
+		if (!node.parentId || !byId.has(node.parentId)) continue;
+		const list = childrenOf.get(node.parentId) ?? [];
+		list.push(node.id);
+		childrenOf.set(node.parentId, list);
+	}
+
+	const out = new Set<string>();
+	const stack = [rootId];
+	while (stack.length) {
+		const id = stack.pop()!;
+		if (out.has(id)) continue;
+		out.add(id);
+		const kids = childrenOf.get(id);
+		if (kids) stack.push(...kids);
+	}
+	return out;
+}
 
 /**
  * Convert GraphViewModel to ELK graph JSON (nested children for parentId).
  * Edges sit on the root with sources/targets as node ids.
  * Leaf sizes come from Flow measurements — compounds never feed measured full-box height back.
+ *
+ * With `rootId`, the compound becomes the ELK root and only its descendants are laid out.
  */
 export function toElkGraph(model: GraphViewModel, options?: ToElkGraphOptions): ElkNodeLike {
 	const byId = new Map(model.nodes.map((n) => [n.id, n]));
@@ -147,6 +182,7 @@ export function toElkGraph(model: GraphViewModel, options?: ToElkGraphOptions): 
 	const fallback = options?.fallbackSize ?? FALLBACK_SIZE;
 	const sizes = normalizeSizes(options?.sizes);
 	const layout = options?.layout ?? model.layout ?? DEFAULT_GRAPH_LAYOUT;
+	const rootId = options?.rootId;
 
 	for (const node of model.nodes) {
 		if (node.parentId && byId.has(node.parentId)) {
@@ -187,16 +223,35 @@ export function toElkGraph(model: GraphViewModel, options?: ToElkGraphOptions): 
 		return elk;
 	}
 
+	const rootLayoutOptions = {
+		...layoutToElkOptions(layout),
+		...(options?.layoutOptions ?? {})
+	};
+
+	// Subtree layout: selected compound is ELK root; children stay parent-relative in SF.
+	if (rootId && byId.has(rootId)) {
+		const scope = subtreeNodeIds(model, rootId);
+		const edges: ElkEdgeLike[] = [...model.edges]
+			.filter((e) => scope.has(e.source) && scope.has(e.target))
+			.sort((a, b) => compareEdges(a, b, byId))
+			.map((e) => edgeToElk(e));
+		const kids = childrenOf.get(rootId) ?? [];
+
+		return {
+			id: rootId,
+			layoutOptions: rootLayoutOptions,
+			children: kids.map(toElkNode),
+			edges
+		};
+	}
+
 	const edges: ElkEdgeLike[] = [...model.edges]
 		.sort((a, b) => compareEdges(a, b, byId))
 		.map((e) => edgeToElk(e));
 
 	return {
 		id: 'root',
-		layoutOptions: {
-			...layoutToElkOptions(layout),
-			...(options?.layoutOptions ?? {})
-		},
+		layoutOptions: rootLayoutOptions,
 		children: roots.map(toElkNode),
 		edges
 	};
@@ -257,6 +312,16 @@ export function applyElkLayoutResult(model: GraphViewModel, layout: ElkNodeLike)
 	const positions = new Map<string, { x: number; y: number }>();
 	collectPositions(layout, positions);
 	const sizes = collectElkSizes(layout);
+	// Subtree layout uses the compound as ELK root — include its box size (children only get positions).
+	if (
+		layout.id &&
+		layout.id !== 'root' &&
+		layout.width != null &&
+		layout.height != null &&
+		!sizes.has(layout.id)
+	) {
+		sizes.set(layout.id, { width: layout.width, height: layout.height });
+	}
 	// Only leaf breakers/outputs — never shuffle rooms/boards (unequal boxes → overlaps).
 	orderLeafLayers(model, positions, sizes);
 

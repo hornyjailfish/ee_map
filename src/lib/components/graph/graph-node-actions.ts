@@ -17,9 +17,19 @@ export type GraphNodeDeleteRef = {
 	label: string;
 };
 
+export type GraphNodeEditRef = {
+	id: string;
+	table: string;
+	label: string;
+	/** Serialized writable field values to prefill the edit form. */
+	values?: Record<string, string>;
+};
+
 export type GraphNodeActions = {
 	/** Open add-child modal for the selected parent node. */
 	requestAddChild: (parent: GraphNodeParentRef) => void;
+	/** Open edit modal for a domain node's record. */
+	requestEditNode: (node: GraphNodeEditRef) => void;
 	/** Confirm + delete a domain node after server success. */
 	requestDeleteNode: (node: GraphNodeDeleteRef) => void;
 };

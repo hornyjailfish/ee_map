@@ -1,9 +1,18 @@
 <script lang="ts">
 	import { Handle, Position, type Node, type NodeProps } from '@xyflow/svelte';
 	import type { GraphNodeData } from '$lib/transform/to-graph';
+	import GraphNodePropsToolbar from '../GraphNodePropsToolbar.svelte';
+	import { getGraphNodeUi } from '../graph-node-ui';
 
 	type DefaultNode = Node<GraphNodeData, 'default' | 'entity'>;
-	let { data, selected }: NodeProps<DefaultNode> = $props();
+	let { id, data, selected, selectable, draggable }: NodeProps<DefaultNode> = $props();
+
+	const nodeUi = getGraphNodeUi();
+
+	function onDoubleClick(e: MouseEvent) {
+		e.stopPropagation();
+		if (!selectable) nodeUi.setSelectable(id, true);
+	}
 
 	const role = $derived(data.role && data.role !== 'default' ? data.role : null);
 	const showTarget = $derived(data.isTarget === true);
@@ -11,7 +20,9 @@
 </script>
 
 <!-- Content-sized. Handles only when this node is an edge endpoint. -->
-<div class={['default-node', selected && 'is-selected']}>
+<!-- svelte-ignore a11y_no_static_element_interactions (node double-click escape hatch for non-selectable nodes) -->
+	<div class={['default-node', selected && 'is-selected']} ondblclick={onDoubleClick}>
+		<GraphNodePropsToolbar {id} {selectable} {draggable} />
 	<div class="default-node__body">
 		{#if role}
 			<span class="default-node__role">{role}</span>

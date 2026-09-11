@@ -1,7 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import { DEFAULT_GRAPH_LAYOUT } from '$lib/config/merge';
 import type { GraphViewModel } from './to-graph';
-import { applyElkLayout, collectElkSizes, toElkGraph, type ElkNodeLike } from './to-elk';
+import {
+	applyElkLayout,
+	applyElkLayoutResult,
+	collectElkSizes,
+	subtreeNodeIds,
+	toElkGraph,
+	type ElkNodeLike
+} from './to-elk';
 
 const defaultLayout = {
 	...DEFAULT_GRAPH_LAYOUT,
@@ -113,6 +120,36 @@ describe('toElkGraph', () => {
 			sizes: { 'boards:orphan': { width: 100, height: 40 } }
 		});
 		expect(elk.children?.map((c) => c.id)).toEqual(['boards:orphan']);
+	});
+
+	it('layouts a compound subtree with rootId (ELK root = that node)', () => {
+		const elk = toElkGraph(fixtureModel, { sizes: fixtureSizes, rootId: 'boards:b1' });
+
+		expect(elk.id).toBe('boards:b1');
+		expect(elk.children?.map((c) => c.id)).toEqual(['breakers:q1', 'breakers:q2']);
+		expect(elk.edges).toEqual([
+			{ id: 'connects:c1', sources: ['breakers:q1'], targets: ['breakers:q2'] }
+		]);
+		// room is outside the subtree — not present
+		expect(elk.children?.some((c) => c.id === 'electric_rooms:r1')).toBe(false);
+	});
+
+	it('filters edges that leave the subtree when rootId is set', () => {
+		const model: GraphViewModel = {
+			...fixtureModel,
+			edges: [
+				...fixtureModel.edges,
+				{
+					id: 'connects:out',
+					source: 'breakers:q1',
+					target: 'electric_rooms:r1',
+					type: 'power',
+					data: { table: 'connects', role: 'feeds' }
+				}
+			]
+		};
+		const elk = toElkGraph(model, { sizes: fixtureSizes, rootId: 'boards:b1' });
+		expect(elk.edges?.map((e) => e.id)).toEqual(['connects:c1']);
 	});
 
 	it('applies model.layout and layoutOptions overrides', () => {
@@ -411,6 +448,38 @@ describe('applyElkLayout', () => {
 		expect(byId['boards:wide']).toEqual({ x: 10, y: 20 });
 		expect(byId['boards:narrow']).toEqual({ x: 330, y: 20 });
 		expect(byId['breakers:q0']).toEqual({ x: 20, y: 30 });
+	});
+});
+
+describe('subtreeNodeIds', () => {
+	it('includes root and all nested descendants', () => {
+		expect([...subtreeNodeIds(fixtureModel, 'boards:b1')].sort()).toEqual([
+			'boards:b1',
+			'breakers:q1',
+			'breakers:q2'
+		]);
+		expect(subtreeNodeIds(fixtureModel, 'missing').size).toBe(0);
+	});
+});
+
+describe('applyElkLayoutResult subtree root size', () => {
+	it('records the ELK root compound size when id is not synthetic root', () => {
+		const laid: ElkNodeLike = {
+			id: 'boards:b1',
+			width: 220,
+			height: 100,
+			children: [
+				{ id: 'breakers:q1', x: 10, y: 20, width: 72, height: 36 },
+				{ id: 'breakers:q2', x: 100, y: 20, width: 80, height: 36 }
+			]
+		};
+		const { model, sizes } = applyElkLayoutResult(fixtureModel, laid);
+		expect(sizes.get('boards:b1')).toEqual({ width: 220, height: 100 });
+		// Root compound keeps prior position (not in ELK position map)
+		expect(model.nodes.find((n) => n.id === 'boards:b1')?.position).toEqual({ x: 0, y: 0 });
+		expect(model.nodes.find((n) => n.id === 'breakers:q1')?.position).toEqual({ x: 10, y: 20 });
+		// Unrelated room left alone
+		expect(model.nodes.find((n) => n.id === 'electric_rooms:r1')?.position).toEqual({ x: 0, y: 0 });
 	});
 });
 

@@ -2,17 +2,28 @@
 	import { Handle, Position, type Node, type NodeProps } from '@xyflow/svelte';
 	import type { GraphNodeData } from '$lib/transform/to-graph';
 	import GraphNodeToolbar from '../GraphNodeToolbar.svelte';
+	import GraphNodePropsToolbar from '../GraphNodePropsToolbar.svelte';
+	import { getGraphNodeUi } from '../graph-node-ui';
 
 	type BreakerNode = Node<GraphNodeData, 'breaker'>;
-	let { id, data, selected, isConnectable }: NodeProps<BreakerNode> = $props();
+	let { id, data, selected, selectable, draggable, isConnectable }: NodeProps<BreakerNode> = $props();
+
+	const nodeUi = getGraphNodeUi();
 
 	/** Breakers are always wiring endpoints (handles visible; drag requires nodesConnectable). */
 	const showHandles = $derived(data.canConnect !== false);
+
+	function onDoubleClick(e: MouseEvent) {
+		e.stopPropagation();
+		if (!selectable) nodeUi.setSelectable(id, true);
+	}
 </script>
 
 <!-- Content-sized. Handles on breaker role; isConnectable follows canvas nodesConnectable. -->
-<div class={['breaker-node', selected && 'is-selected']}>
+<!-- svelte-ignore a11y_no_static_element_interactions (node double-click escape hatch for non-selectable nodes) -->
+	<div class={['breaker-node', selected && 'is-selected']} ondblclick={onDoubleClick}>
 	<GraphNodeToolbar {id} {data} />
+	<GraphNodePropsToolbar {id} {selectable} {draggable} />
 	<div class="breaker-node__body">
 		<span class="breaker-node__label">{data.label}</span>
 		{#if data.subtitle}

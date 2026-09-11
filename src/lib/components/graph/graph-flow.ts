@@ -56,11 +56,13 @@ export function withNodeUiFlags(data: GraphNode['data'], opts: GraphNodeUiOpts):
 	const create = opts.crud?.createByParentTable[table];
 	const canAddChild = canEdit && Boolean(create?.canCreate);
 	const canDelete = canEdit && Boolean(opts.crud?.deleteByTable[table]);
+	const canUpdate = canEdit && Boolean(opts.crud?.updateByTable[table]);
 	const next = {
 		...data,
 		canEdit,
 		canAddChild,
-		canDelete
+		canDelete,
+		canUpdate
 	};
 	if (canAddChild && create) {
 		next.addChildLabel = create.childRole || create.childLabel;
@@ -140,6 +142,23 @@ export function toLaidOutNodes(
 		}
 
 		return node;
+	});
+}
+
+/**
+ * Patch current canvas nodes with a laid-out subset (subtree ELK).
+ * Nodes outside `onlyIds` keep position, size, and SF measured state.
+ */
+export function mergeLaidOutNodes(
+	current: GraphNode[],
+	laidOut: GraphNode[],
+	onlyIds: ReadonlySet<string>
+): GraphNode[] {
+	if (onlyIds.size === 0) return current;
+	const nextById = new Map(laidOut.map((n) => [n.id, n]));
+	return current.map((n) => {
+		if (!onlyIds.has(n.id)) return n;
+		return nextById.get(n.id) ?? n;
 	});
 }
 
