@@ -116,7 +116,7 @@ export function assertCanUnrelate(relation: ResolvedEdge): void {
 export function coerceScalar(field: ResolvedField, raw: unknown): unknown {
 	if (raw === '' || raw === undefined || raw === null) {
 		// Explicit null so MERGE clears the field (undefined keys are omitted by JSON/SDK).
-		if (field.optional) return null;
+		if (field.optional) return undefined;
 		throw new MutateError(400, 'required_field', `Field '${field.name}' is required`);
 	}
 
@@ -172,11 +172,11 @@ export function coerceScalar(field: ResolvedField, raw: unknown): unknown {
  * Accepts a plain object, JSON string, or SDK {@link Geometry} instance.
  * Returns a Surreal SDK Geometry value (CBOR-tagged) — plain `{ type, coordinates }`
  * objects are rejected by the engine over MERGE/params.
- * Optional empty → `null`.
+ * Optional empty → `undefined`.
  */
-export function coerceGeometry(field: ResolvedField, raw: unknown): Geometry | null {
+export function coerceGeometry(field: ResolvedField, raw: unknown): Geometry | undefined {
 	if (raw === '' || raw === undefined || raw === null) {
-		if (field.optional) return null;
+		if (field.optional) return undefined;
 		throw new MutateError(400, 'required_field', `Field '${field.name}' is required`);
 	}
 

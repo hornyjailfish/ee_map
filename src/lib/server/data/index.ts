@@ -5,6 +5,15 @@ export {
 	type QueryEntitiesOptions
 } from './query-entities';
 
+export {
+	DEFAULT_MAX_DISTANCE,
+	DEFAULT_SEARCH_LIMIT,
+	isValidFieldName,
+	queryEntitiesSearch,
+	resolveSearchFields,
+	type QueryEntitiesSearchOptions
+} from './query-entities-search';
+
 export { DEFAULT_LEVEL_LIMIT, queryLevels } from './query-levels';
 
 export { queryRelations, type QueryRelationsOptions } from './query-relations';
