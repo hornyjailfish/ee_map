@@ -11,9 +11,16 @@ import CircleStyle from 'ol/style/Circle';
 export type MapStyleOptions = {
 	/** Primary selection / keyboard focus highlight */
 	focused?: boolean;
+	/** Already used / assigned — muted so free features stand out */
+	assigned?: boolean;
 };
 
 export type MapStyleFactory = (opts?: MapStyleOptions) => Style;
+
+const ASSIGNED_FILL = 'rgba(148, 163, 184, 0.12)';
+const ASSIGNED_STROKE = '#94a3b8';
+const ASSIGNED_FOCUSED_FILL = 'rgba(100, 116, 139, 0.28)';
+const ASSIGNED_FOCUSED_STROKE = '#64748b';
 
 function polygonStyle(
 	fill: string,
@@ -23,11 +30,27 @@ function polygonStyle(
 ): MapStyleFactory {
 	return (opts = {}) => {
 		const focused = Boolean(opts.focused);
+		const assigned = Boolean(opts.assigned);
+		const f = assigned
+			? focused
+				? ASSIGNED_FOCUSED_FILL
+				: ASSIGNED_FILL
+			: focused
+				? focusedFill
+				: fill;
+		const s = assigned
+			? focused
+				? ASSIGNED_FOCUSED_STROKE
+				: ASSIGNED_STROKE
+			: focused
+				? focusedStroke
+				: stroke;
 		return new Style({
-			fill: new Fill({ color: focused ? focusedFill : fill }),
+			fill: new Fill({ color: f }),
 			stroke: new Stroke({
-				color: focused ? focusedStroke : stroke,
-				width: focused ? 2.5 : 1.5
+				color: s,
+				width: focused ? 2.5 : assigned ? 1 : 1.5,
+				lineDash: assigned && !focused ? [6, 4] : undefined
 			})
 		});
 	};
@@ -41,12 +64,27 @@ function pointStyle(
 ): MapStyleFactory {
 	return (opts = {}) => {
 		const focused = Boolean(opts.focused);
+		const assigned = Boolean(opts.assigned);
+		const f = assigned
+			? focused
+				? ASSIGNED_FOCUSED_FILL
+				: ASSIGNED_FILL
+			: focused
+				? focusedFill
+				: fill;
+		const s = assigned
+			? focused
+				? ASSIGNED_FOCUSED_STROKE
+				: ASSIGNED_STROKE
+			: focused
+				? focusedStroke
+				: stroke;
 		return new Style({
 			image: new CircleStyle({
-				radius: focused ? 7 : 5,
-				fill: new Fill({ color: focused ? focusedFill : fill }),
+				radius: focused ? 7 : assigned ? 4 : 5,
+				fill: new Fill({ color: f }),
 				stroke: new Stroke({
-					color: focused ? focusedStroke : stroke,
+					color: s,
 					width: focused ? 2 : 1.25
 				})
 			})

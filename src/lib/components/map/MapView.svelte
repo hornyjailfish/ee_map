@@ -1,6 +1,7 @@
 <script lang="ts">
 	/**
 	 * Client-only OpenLayers map on an identity metric XY plane (no Web Mercator).
+	 * Layers are DB-backed MapViewModel features loaded via VectorSource.loader.
 	 * Parent should mount this only when `browser` is true (same pattern as GraphView).
 	 */
 	import type { Attachment } from 'svelte/attachments';
@@ -13,8 +14,11 @@
 	import type { FeatureLike } from 'ol/Feature';
 	import Point from 'ol/geom/Point';
 	import Polygon from 'ol/geom/Polygon';
+	import LineString from 'ol/geom/LineString';
+	import MultiLineString from 'ol/geom/MultiLineString';
 	import Projection from 'ol/proj/Projection';
 	import { getCenter } from 'ol/extent';
+	import { all as loadAll } from 'ol/loadingstrategy';
 	import { appUi } from '$lib/client/state/app-ui.svelte';
 	import { styleFor } from '$lib/client/registries/styles';
 	import type { MapFeature, MapViewModel, NormalizedGeometry } from '$lib/transform/to-map';
@@ -44,12 +48,20 @@
 		return FALLBACK_EXTENT;
 	}
 
-	function geometryToOl(geometry: NormalizedGeometry): Point | Polygon | null {
+	function geometryToOl(
+		geometry: NormalizedGeometry
+	): Point | Polygon | LineString | MultiLineString | null {
 		if (geometry.kind === 'point') {
 			return new Point([geometry.x, geometry.y]);
 		}
 		if (geometry.kind === 'polygon') {
 			return new Polygon(geometry.rings);
+		}
+		if (geometry.kind === 'line') {
+			if (geometry.paths.length === 1) {
+				return new LineString(geometry.paths[0]!);
+			}
+			return new MultiLineString(geometry.paths);
 		}
 		return null;
 	}
@@ -62,7 +74,9 @@
 		f.setId(mf.id);
 		f.set('styleKey', mf.styleKey);
 		f.set('table', mf.table);
+		f.set('levelId', mf.levelId);
 		if (mf.label !== undefined) f.set('label', mf.label);
+		if (mf.layerGroup !== undefined) f.set('layerGroup', mf.layerGroup);
 		return f;
 	}
 
@@ -86,6 +100,7 @@
 			controls: [],
 			view: new View({
 				projection,
+				extent: [-100, -100, 500, 500],
 				center: getCenter(initialExtent),
 				zoom: 2,
 				multiWorld: false
@@ -131,11 +146,19 @@
 			);
 
 			for (const layerView of layers) {
-				const source = new VectorSource();
-				for (const mf of layerView.features) {
-					const olFeature = featureToOl(mf);
-					if (olFeature) source.addFeature(olFeature);
-				}
+				// DB rows already queried in /map load → toMap; loader materializes features
+				const snapshot = layerView.features.slice();
+				const source = new VectorSource({
+					strategy: loadAll,
+					loader: async () => {
+						const out: Feature[] = [];
+						for (const mf of snapshot) {
+							const olFeature = featureToOl(mf);
+							if (olFeature) out.push(olFeature);
+						}
+						return out;
+					}
+				});
 
 				const vector = new VectorLayer({
 					source,
