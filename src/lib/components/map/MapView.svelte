@@ -4,7 +4,8 @@
 	 * Layers are DB-backed MapViewModel features loaded via VectorSource.loader.
 	 * Parent should mount this only when `browser` is true (same pattern as GraphView).
 	 *
-	 * C4.1 create: optional Draw + Snap when `tool` is draw-polygon / draw-point.
+	 * C4.1 create: DrawSnapSession when `tool` is draw-polygon / draw-point —
+	 * feature Snap + Shift-ortho + vertex alignment guides.
 	 * Modify interaction hooks are reserved (tool === 'modify') for the next slice.
 	 */
 	import type { Attachment } from 'svelte/attachments';
@@ -18,8 +19,6 @@
 	import Projection from 'ol/proj/Projection';
 	import { getCenter } from 'ol/extent';
 	import { all as loadAll } from 'ol/loadingstrategy';
-	import Draw from 'ol/interaction/Draw';
-	import Snap from 'ol/interaction/Snap';
 	import type { Type as GeometryType } from 'ol/geom/Geometry';
 	import { appUi } from '$lib/client/state/app-ui.svelte';
 	import {
@@ -28,6 +27,10 @@
 		type MapToolMode,
 		type WritableGeoJSON
 	} from '$lib/client/map';
+	import {
+		collectMapVectorSources,
+		DrawSnapSession
+	} from '$lib/client/map/draw-snap-session';
 	import { styleFor } from '$lib/client/registries/styles';
 	import type { MapFeature, MapViewModel, NormalizedGeometry } from '$lib/transform/to-map';
 	import 'ol/ol.css';
@@ -150,8 +153,7 @@
 
 		map.on('singleclick', (evt) => {
 			// While drawing, let Draw own the click; skip selection changes mid-sketch.
-			const drawActive = Boolean(drawBox.interaction);
-			if (drawActive) return;
+			if (drawBox.session) return;
 
 			const hit = map.forEachFeatureAtPixel(
 				evt.pixel,
@@ -176,41 +178,12 @@
 		const drawCb: { onDrawEnd?: (geometry: WritableGeoJSON) => void } = {
 			onDrawEnd: untrack(() => onDrawEnd)
 		};
-		const drawBox: { interaction: Draw | null } = { interaction: null };
-		/** One Snap per vector source so draw vertices stick to existing geometry. */
-		const snapBox: { interactions: Snap[] } = { interactions: [] };
+		/** Draw + feature Snap + CAD alignment/ortho session (null when navigate). */
+		const drawBox: { session: DrawSnapSession | null } = { session: null };
 
-		function clearSnaps() {
-			for (const snap of snapBox.interactions) {
-				map.removeInteraction(snap);
-			}
-			snapBox.interactions = [];
-		}
-
-		/** Install OL Snap against draft + all live vector layers (call after Draw is on). */
-		function installSnaps() {
-			clearSnaps();
-			if (!drawBox.interaction) return;
-
-			const sources = new Set<VectorSource>();
-			sources.add(draftSource);
-			for (const layer of map.getLayers().getArray()) {
-				if (!(layer instanceof VectorLayer)) continue;
-				const source = layer.getSource();
-				if (source instanceof VectorSource) sources.add(source);
-			}
-
-			for (const source of sources) {
-				const snap = new Snap({
-					source,
-					pixelTolerance: 12,
-					vertex: true,
-					edge: true
-				});
-				// After Draw so pointer coords are adjusted before the vertex is committed.
-				map.addInteraction(snap);
-				snapBox.interactions.push(snap);
-			}
+		function disposeDrawSession() {
+			drawBox.session?.dispose();
+			drawBox.session = null;
 		}
 
 		// Keep callback pointer fresh
@@ -225,6 +198,8 @@
 			const existing = [...map.getLayers().getArray()];
 			for (const layer of existing) {
 				if (layer === draftLayer) continue;
+				// DrawSnapSession owns the temporary H/V guide overlay.
+				if (layer.get('role') === 'snap-guides') continue;
 				map.removeLayer(layer);
 			}
 
@@ -266,10 +241,13 @@
 				map.addLayer(vector);
 			}
 
-			// Keep draft on top after layer rebuild
+			// Keep draft + guides on top after layer rebuild
 			draftLayer.setZIndex(10_000);
-			// Layer sources changed — rebind Snap while a draw tool is active.
-			installSnaps();
+			for (const layer of map.getLayers().getArray()) {
+				if (layer.get('role') === 'snap-guides') layer.setZIndex(10_050);
+			}
+			// Layer sources changed — rebind feature snaps while a draw tool is active.
+			drawBox.session?.rebindFeatureSnaps();
 
 			const nextExtent = resolveExtent(v);
 			const key = nextExtent.join(',');
@@ -289,6 +267,7 @@
 			focusBox.id = appUi.focusedId;
 			for (const layer of map.getLayers().getArray()) {
 				if (layer === draftLayer) continue;
+				if (layer.get('role') === 'snap-guides') continue;
 				layer.changed();
 			}
 		});
@@ -312,16 +291,12 @@
 			}
 		});
 
-		// Draw interaction — create tools only; modify reserved for next slice
+		// Draw + snap session — create tools only; modify reserved for next slice
 		$effect(() => {
 			const mode = tool;
 			const edit = canEdit;
 
-			clearSnaps();
-			if (drawBox.interaction) {
-				map.removeInteraction(drawBox.interaction);
-				drawBox.interaction = null;
-			}
+			disposeDrawSession();
 
 			const geomType = edit ? drawTypeForTool(mode) : null;
 			if (!geomType) {
@@ -329,12 +304,14 @@
 				return;
 			}
 
-			const draw = new Draw({
-				source: draftSource,
-				type: geomType
+			const session = new DrawSnapSession({
+				map,
+				draftSource,
+				type: geomType,
+				getSnapSources: () => collectMapVectorSources(map, [draftSource])
 			});
 
-			draw.on('drawend', (evt) => {
+			session.draw.on('drawend', (evt) => {
 				const feature = evt.feature;
 				feature.set('styleKey', draftStyleKey);
 				const writable = olToWritableGeoJSON(feature.getGeometry() ?? null);
@@ -345,24 +322,23 @@
 				if (writable) drawCb.onDrawEnd?.(writable);
 			});
 
-			map.addInteraction(draw);
-			drawBox.interaction = draw;
-			installSnaps();
+			drawBox.session = session;
 			element.style.cursor = 'crosshair';
 
 			return () => {
-				clearSnaps();
-				map.removeInteraction(draw);
-				if (drawBox.interaction === draw) drawBox.interaction = null;
+				if (drawBox.session === session) {
+					session.dispose();
+					drawBox.session = null;
+				}
 				element.style.cursor = '';
 			};
-			});
+		});
 
 		// Esc cancels in-progress draw (modify will share this later)
 		const onKeyDown = (ev: KeyboardEvent) => {
 			if (ev.key !== 'Escape') return;
-			if (drawBox.interaction) {
-				drawBox.interaction.abortDrawing();
+			if (drawBox.session) {
+				drawBox.session.abortDrawing();
 				const stale = draftSource
 					.getFeatures()
 					.filter((f) => f.get('role') !== 'confirmed');
@@ -374,11 +350,7 @@
 		return () => {
 			window.removeEventListener('keydown', onKeyDown);
 			resizeObserver.disconnect();
-			clearSnaps();
-			if (drawBox.interaction) {
-				map.removeInteraction(drawBox.interaction);
-				drawBox.interaction = null;
-			}
+			disposeDrawSession();
 			map.setTarget(undefined);
 			map.dispose();
 		};

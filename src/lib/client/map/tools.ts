@@ -1,6 +1,7 @@
 /**
  * Map editor tool modes (C4.1+).
  * Create-first: navigate + draw-polygon are active; modify/clear/point reserved.
+ * Draw tools use DrawSnapSession (feature snap + Shift-ortho + CAD alignment).
  */
 
 export const MAP_TOOL_MODES = [
@@ -49,9 +50,9 @@ export function mapToolLabel(mode: MapToolMode): string {
 export function mapToolHint(mode: MapToolMode): string | null {
 	switch (mode) {
 		case 'draw-polygon':
-			return 'Click to add vertices · snaps to nearby edges · double-click to finish · Esc cancels';
+			return 'Click vertices · snap edges/points · Shift = 0°/90° · align to other corners · double-click finishes · Esc cancels';
 		case 'draw-point':
-			return 'Click the map to place a point · snaps to nearby geometry';
+			return 'Click to place · snaps to geometry and alignment guides';
 		case 'modify':
 			return 'Drag vertices to reshape the focused feature';
 		case 'clear':

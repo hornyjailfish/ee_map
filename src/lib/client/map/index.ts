@@ -17,3 +17,13 @@ export {
 	type MapCreateTool,
 	type MapToolMode
 } from './tools';
+
+export {
+	applyDrawConstraints,
+	collectVertices,
+	constrainOrtho,
+	snapAlignment,
+	type AlignmentGuide,
+	type AlignmentSnapResult,
+	type XY as SnapXY
+} from './draw-snap';
