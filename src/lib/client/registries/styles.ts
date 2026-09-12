@@ -121,19 +121,33 @@ const styles: Record<string, MapStyleFactory> = {
 	),
 	/** Zones / annotations — green, under rooms (lower z) */
 	zones: polygonStyle(
-		'rgba(34, 197, 94, 0.18)',
-		'#22c55e',
+		'rgba(34, 197, 94, 0.10)',
+		'#22c55e88',
 		'rgba(22, 163, 74, 0.4)',
 		'#15803d'
 	),
 	/** Generic points if a layer later uses them */
-	point: pointStyle(
-		'rgba(59, 130, 246, 0.7)',
-		'#1d4ed8',
-		'rgba(37, 99, 235, 0.95)',
-		'#1e3a8a'
-	)
-};
+			point: pointStyle(
+				'rgba(59, 130, 246, 0.7)',
+				'#1d4ed8',
+				'rgba(37, 99, 235, 0.95)',
+				'#1e3a8a'
+			),
+			/** In-progress / pending draw sketch (C4.1 create) */
+			'draw-draft': polygonStyle(
+				'rgba(168, 85, 247, 0.28)',
+				'#a855f7',
+				'rgba(147, 51, 234, 0.45)',
+				'#7e22ce'
+			),
+			/** Floor-plan linework */
+			levels: polygonStyle(
+				'rgba(100, 116, 139, 0.05)',
+				'#64748b',
+				'rgba(71, 85, 105, 0.12)',
+				'#475569'
+			)
+		};
 
 /** Resolve a style factory by config styleKey. */
 export function getStyleFactory(styleKey: string): MapStyleFactory {

@@ -2,7 +2,7 @@
 
 Internal tool for an electrical engineering team. Three views over the same Surreal data and session, driven by a shared configuration layer.
 
-**Status:** config spine + three read views + selection (N10) + table/graph CRUD (C0–C3) + overlay admin (N12) + map geometry **assign** (C4.0). Header search deferred (N9). Next: in-map geometry editor (C4.1).  
+**Status:** config spine + three read views + selection (N10) + table/graph CRUD (C0–C3) + overlay admin (N12) + map geometry **assign** (C4.0) + in-map **draw/create** (C4.1a). Header search deferred (N9). Next: vertex modify / clear (C4.1b).  
 **Stack:** SvelteKit + Surreal session/auth + SurrealKit (schema/seed/typegen) + SVAR Grid + Svelte Flow/ELK + OpenLayers.  
 **Branch:** `feature/map-editor` (from `feature/crud`) — C4 map spatial work.
 
@@ -24,7 +24,8 @@ Internal tool for an electrical engineering team. Three views over the same Surr
 | `/config` overlay editor (OWNER)                                           | **N12 done**                                  |
 | `/map/assign` static GeoJSON → record geometry                             | **C4.0 done** (match assigned, search, hide)  |
 | Floor-plan layer (`levels.geometry` MultiLine + optional `levelField`)     | **C4.0b done** (schema/seed/to-map/OL)        |
-| In-map vertex/draw edit on `/map`                                          | **C4.1 next**                                 |
+| In-map draw/create polygons on `/map`                                      | **C4.1a done** (tool modes + createFeature)   |
+| In-map vertex modify / clear geometry                                      | **C4.1b next**                                |
 | Header search                                                              | **Deferred** (embedding service; no data yet) |
 
 ---
@@ -520,14 +521,15 @@ Resolved entity + rows → to-table → { data, columns } → <Grid />
 | **C3.1** | Graph: node create/delete + props toolbar  | **Done / polishing** (nested add, ELK packing) |
 | **C4.0** | Map assign: static geo → `patchGeometry`   | **Done** — `/map/assign`, assigned match, record search |
 | **C4.0b**| Levels floor-plan MultiLine background     | **Done** — schema + seed + to-map line + OL |
-| **C4.1** | Map: in-view geometry edit (vertex/draw)   | **Next** on `feature/map-editor` |
+| **C4.1a** | Map: draw polygon → create record + geom | **Done** — tools + `createFeature` action |
+| **C4.1b** | Map: vertex modify / clear geometry      | **Next** on `feature/map-editor` |
 | **N12**  | Light overlay admin UI (`/config`, OWNER)  | **Done** — soft overlay editor |
 
 ### Immediate coding focus
 
 ```text
-C4.1 — in-map geometry editor on /map (vertex drag / draw / clear)
-  reuse: patchGeometry + assertCanEdit + geometry normalizer
+C4.1b — vertex modify / clear on /map (after create-first C4.1a)
+  reuse: patchGeometry + MapToolMode modify/clear + OL Modify
   after: invalidate map load; keep appUi.focusedId + levelId
 ```
 
@@ -542,7 +544,8 @@ display recipe is multi-part.
 | ----- | -- | ------- |
 | C4.0 assign | Pick static feature + DB row | `patchGeometry` (+ optional level) |
 | C4.0b floor plan | `levels.geometry` linework under features | seed / sync from `static/geo/*/base.geojson` |
-| C4.1 editor | Modify/draw on live `/map` features | same `patchGeometry` (and later create+geom) |
+| C4.1a create | Draw polygon → modal → new row | `createRecord` + geometry |
+| C4.1b modify | Vertex drag / clear on focused feature | `patchGeometry` |
 
 ### CRUD design (toward C0–C4)
 
@@ -589,16 +592,17 @@ src/lib/server/data/mutate.ts
   `geometryKey` fingerprint against DB rows; optional hide-assigned; record list via fuzzy search remote.
 - **C4.0b:** `levels.geometry` as MultiLine floor plan; map layers may omit `levelField`
   (self-level = row id). Style registry + OL render line geometries.
-- **C4.1 next:** metric XY vertex edit / move / draw on `/map`; write via `patchGeometry`
+- **C4.1a done:** draw polygon on `/map` → create modal (name/level) → `createFeature`; tool modes + map-crud meta prepared for modify
+- **C4.1b next:** metric XY vertex edit / clear on focused feature; write via `patchGeometry`
 - Level stays filter only unless moving feature across levels explicitly
 
 **Roles (current)**
 
-| Role   | Read | Table | Graph | Map assign | Map edit (C4.1) | Overlay |
-| ------ | ---- | ----- | ----- | ---------- | --------------- | ------- |
-| VIEWER | ✓    | —     | —     | —          | —               | —       |
-| EDITOR | ✓    | ✓     | ✓     | ✓          | planned         | —       |
-| OWNER  | ✓    | ✓     | ✓     | ✓          | planned         | ✓       |
+| Role   | Read | Table | Graph | Map assign | Map draw (C4.1a) | Map modify (C4.1b) | Overlay |
+| ------ | ---- | ----- | ----- | ---------- | ---------------- | ------------------ | ------- |
+| VIEWER | ✓    | —     | —     | —          | —                | —                  | —       |
+| EDITOR | ✓    | ✓     | ✓     | ✓          | ✓                | planned            | —       |
+| OWNER  | ✓    | ✓     | ✓     | ✓          | ✓                | planned            | ✓       |
 
 **Out of scope for first CRUD slice** (historical — mostly cleared)
 
@@ -663,5 +667,5 @@ App env (`SURREAL_URL`, WS) and kit env (`SURREALDB_HOST`, HTTP) may differ by p
 5. Surreal permissions: ensure EDITOR can MERGE/CREATE/DELETE / RELATE on domain tables
 6. Composite FK sort keys (`sortKey` from display parts) when SVAR needs header multi-key
 7. Record `sort` default (config string) is client-side only — confirm SVAR header marks match on table reopen
-8. C4.1: OL Modify/Draw interactions, clear-geometry, cross-level move policy
+8. C4.1b: OL Modify interaction, clear-geometry, cross-level move policy; optional attach-drawn-geom to existing gap records
 9. Seed or sync pipeline: collapse `static/geo/*/base.geojson` → `levels.geometry`

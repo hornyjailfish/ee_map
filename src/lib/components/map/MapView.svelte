@@ -3,6 +3,9 @@
 	 * Client-only OpenLayers map on an identity metric XY plane (no Web Mercator).
 	 * Layers are DB-backed MapViewModel features loaded via VectorSource.loader.
 	 * Parent should mount this only when `browser` is true (same pattern as GraphView).
+	 *
+	 * C4.1 create: optional Draw + Snap when `tool` is draw-polygon / draw-point.
+	 * Modify interaction hooks are reserved (tool === 'modify') for the next slice.
 	 */
 	import type { Attachment } from 'svelte/attachments';
 	import { untrack } from 'svelte';
@@ -12,24 +15,50 @@
 	import VectorSource from 'ol/source/Vector';
 	import Feature from 'ol/Feature';
 	import type { FeatureLike } from 'ol/Feature';
-	import Point from 'ol/geom/Point';
-	import Polygon from 'ol/geom/Polygon';
-	import LineString from 'ol/geom/LineString';
-	import MultiLineString from 'ol/geom/MultiLineString';
 	import Projection from 'ol/proj/Projection';
 	import { getCenter } from 'ol/extent';
 	import { all as loadAll } from 'ol/loadingstrategy';
+	import Draw from 'ol/interaction/Draw';
+	import Snap from 'ol/interaction/Snap';
+	import type { Type as GeometryType } from 'ol/geom/Geometry';
 	import { appUi } from '$lib/client/state/app-ui.svelte';
+	import {
+		normalizedToOl,
+		olToWritableGeoJSON,
+		type MapToolMode,
+		type WritableGeoJSON
+	} from '$lib/client/map';
 	import { styleFor } from '$lib/client/registries/styles';
 	import type { MapFeature, MapViewModel, NormalizedGeometry } from '$lib/transform/to-map';
 	import 'ol/ol.css';
 
 	type Props = {
 		view: MapViewModel;
+		/** EDITOR/OWNER — enable draw/modify interactions when tool is set. */
+		canEdit?: boolean;
+		/** Active tool; `navigate` is pan/select only. */
+		tool?: MapToolMode;
+		/**
+		 * Transient sketch after draw (held until create modal confirms/cancels).
+		 * Rendered above live layers with the draft style.
+		 */
+		draftGeometry?: NormalizedGeometry | null;
+		/** Style key for draft sketch (defaults to `draw-draft`). */
+		draftStyleKey?: string;
+		/** Fired when a draw tool completes a writable Point/Polygon. */
+		onDrawEnd?: (geometry: WritableGeoJSON) => void;
 		class?: string;
 	};
 
-	let { view, class: className = '' }: Props = $props();
+	let {
+		view,
+		canEdit = false,
+		tool = 'navigate',
+		draftGeometry = null,
+		draftStyleKey = 'draw-draft',
+		onDrawEnd,
+		class: className = ''
+	}: Props = $props();
 
 	const FALLBACK_EXTENT: [number, number, number, number] = [-1000, -1000, 1000, 1000];
 
@@ -48,26 +77,8 @@
 		return FALLBACK_EXTENT;
 	}
 
-	function geometryToOl(
-		geometry: NormalizedGeometry
-	): Point | Polygon | LineString | MultiLineString | null {
-		if (geometry.kind === 'point') {
-			return new Point([geometry.x, geometry.y]);
-		}
-		if (geometry.kind === 'polygon') {
-			return new Polygon(geometry.rings);
-		}
-		if (geometry.kind === 'line') {
-			if (geometry.paths.length === 1) {
-				return new LineString(geometry.paths[0]!);
-			}
-			return new MultiLineString(geometry.paths);
-		}
-		return null;
-	}
-
 	function featureToOl(mf: MapFeature): Feature | null {
-		const geom = geometryToOl(mf.geometry);
+		const geom = normalizedToOl(mf.geometry);
 		if (!geom) return null;
 
 		const f = new Feature({ geometry: geom });
@@ -80,9 +91,15 @@
 		return f;
 	}
 
+	function drawTypeForTool(mode: MapToolMode): GeometryType | null {
+		if (mode === 'draw-polygon') return 'Polygon';
+		if (mode === 'draw-point') return 'Point';
+		return null;
+	}
+
 	/**
 	 * Attachment owns the OL Map lifecycle.
-	 * Nested effects track `view` (layers + extent) and `focusedId` (restyle only).
+	 * Nested effects track `view` (layers + extent), focus, tool, and draft geometry.
 	 */
 	const mapAttach: Attachment<HTMLDivElement> = (element) => {
 		// Do not subscribe to `view` here — nested $effect owns updates.
@@ -118,8 +135,32 @@
 		});
 		resizeObserver.observe(element);
 
+		/** Draft sketch source — Draw writes here; confirmed draft stays until parent clears. */
+		const draftSource = new VectorSource({ wrapX: false });
+		const draftLayer = new VectorLayer({
+			source: draftSource,
+			zIndex: 10_000,
+			style: (olFeature: FeatureLike) => {
+				const key = (olFeature.get('styleKey') as string | undefined) ?? draftStyleKey;
+				return styleFor(key, { focused: true });
+			},
+			properties: { role: 'draft' }
+		});
+		map.addLayer(draftLayer);
+
 		map.on('singleclick', (evt) => {
-			const hit = map.forEachFeatureAtPixel(evt.pixel, (f) => f, { hitTolerance: 4 });
+			// While drawing, let Draw own the click; skip selection changes mid-sketch.
+			const drawActive = Boolean(drawBox.interaction);
+			if (drawActive) return;
+
+			const hit = map.forEachFeatureAtPixel(
+				evt.pixel,
+				(f) => f,
+				{
+					hitTolerance: 4,
+					layerFilter: (layer) => layer !== draftLayer
+				}
+			);
 			if (hit) {
 				const id = hit.getId();
 				appUi.focusRecord(id != null ? String(id) : null);
@@ -131,6 +172,51 @@
 		let lastExtentKey = initialExtent.join(',');
 		/** Mutable so OL style fn can read focus without subscribing the layer $effect. */
 		const focusBox: { id: string | null } = { id: untrack(() => appUi.focusedId) };
+		/** Latest draw callback without rebinding interaction on every render. */
+		const drawCb: { onDrawEnd?: (geometry: WritableGeoJSON) => void } = {
+			onDrawEnd: untrack(() => onDrawEnd)
+		};
+		const drawBox: { interaction: Draw | null } = { interaction: null };
+		/** One Snap per vector source so draw vertices stick to existing geometry. */
+		const snapBox: { interactions: Snap[] } = { interactions: [] };
+
+		function clearSnaps() {
+			for (const snap of snapBox.interactions) {
+				map.removeInteraction(snap);
+			}
+			snapBox.interactions = [];
+		}
+
+		/** Install OL Snap against draft + all live vector layers (call after Draw is on). */
+		function installSnaps() {
+			clearSnaps();
+			if (!drawBox.interaction) return;
+
+			const sources = new Set<VectorSource>();
+			sources.add(draftSource);
+			for (const layer of map.getLayers().getArray()) {
+				if (!(layer instanceof VectorLayer)) continue;
+				const source = layer.getSource();
+				if (source instanceof VectorSource) sources.add(source);
+			}
+
+			for (const source of sources) {
+				const snap = new Snap({
+					source,
+					pixelTolerance: 12,
+					vertex: true,
+					edge: true
+				});
+				// After Draw so pointer coords are adjusted before the vertex is committed.
+				map.addInteraction(snap);
+				snapBox.interactions.push(snap);
+			}
+		}
+
+		// Keep callback pointer fresh
+		$effect(() => {
+			drawCb.onDrawEnd = onDrawEnd;
+		});
 
 		// Layers + fit when MapViewModel changes (level navigation etc.)
 		$effect(() => {
@@ -138,6 +224,7 @@
 
 			const existing = [...map.getLayers().getArray()];
 			for (const layer of existing) {
+				if (layer === draftLayer) continue;
 				map.removeLayer(layer);
 			}
 
@@ -179,6 +266,11 @@
 				map.addLayer(vector);
 			}
 
+			// Keep draft on top after layer rebuild
+			draftLayer.setZIndex(10_000);
+			// Layer sources changed — rebind Snap while a draw tool is active.
+			installSnaps();
+
 			const nextExtent = resolveExtent(v);
 			const key = nextExtent.join(',');
 			if (key !== lastExtentKey) {
@@ -196,12 +288,97 @@
 		$effect(() => {
 			focusBox.id = appUi.focusedId;
 			for (const layer of map.getLayers().getArray()) {
+				if (layer === draftLayer) continue;
 				layer.changed();
 			}
 		});
 
+		// Pending draft geometry (after draw, before create submit / cancel)
+		$effect(() => {
+			const draft = draftGeometry;
+			const styleKey = draftStyleKey;
+			// Keep in-progress Draw vertices (role undefined); only replace confirmed draft
+			for (const f of draftSource.getFeatures().slice()) {
+				if (f.get('role') === 'confirmed') draftSource.removeFeature(f);
+			}
+			if (draft && draft.kind !== 'empty') {
+				const geom = normalizedToOl(draft);
+				if (geom) {
+					const f = new Feature({ geometry: geom });
+					f.set('role', 'confirmed');
+					f.set('styleKey', styleKey);
+					draftSource.addFeature(f);
+				}
+			}
+		});
+
+		// Draw interaction — create tools only; modify reserved for next slice
+		$effect(() => {
+			const mode = tool;
+			const edit = canEdit;
+
+			clearSnaps();
+			if (drawBox.interaction) {
+				map.removeInteraction(drawBox.interaction);
+				drawBox.interaction = null;
+			}
+
+			const geomType = edit ? drawTypeForTool(mode) : null;
+			if (!geomType) {
+				element.style.cursor = '';
+				return;
+			}
+
+			const draw = new Draw({
+				source: draftSource,
+				type: geomType
+			});
+
+			draw.on('drawend', (evt) => {
+				const feature = evt.feature;
+				feature.set('styleKey', draftStyleKey);
+				const writable = olToWritableGeoJSON(feature.getGeometry() ?? null);
+				// Draw already added the feature; parent will set draftGeometry
+				queueMicrotask(() => {
+					if (draftSource.hasFeature(feature)) draftSource.removeFeature(feature);
+				});
+				if (writable) drawCb.onDrawEnd?.(writable);
+			});
+
+			map.addInteraction(draw);
+			drawBox.interaction = draw;
+			installSnaps();
+			element.style.cursor = 'crosshair';
+
+			return () => {
+				clearSnaps();
+				map.removeInteraction(draw);
+				if (drawBox.interaction === draw) drawBox.interaction = null;
+				element.style.cursor = '';
+			};
+			});
+
+		// Esc cancels in-progress draw (modify will share this later)
+		const onKeyDown = (ev: KeyboardEvent) => {
+			if (ev.key !== 'Escape') return;
+			if (drawBox.interaction) {
+				drawBox.interaction.abortDrawing();
+				const stale = draftSource
+					.getFeatures()
+					.filter((f) => f.get('role') !== 'confirmed');
+				for (const f of stale) draftSource.removeFeature(f);
+			}
+		};
+		window.addEventListener('keydown', onKeyDown);
+
 		return () => {
+			window.removeEventListener('keydown', onKeyDown);
 			resizeObserver.disconnect();
+			clearSnaps();
+			if (drawBox.interaction) {
+				map.removeInteraction(drawBox.interaction);
+				drawBox.interaction = null;
+			}
 			map.setTarget(undefined);
 			map.dispose();
 		};
@@ -209,7 +386,11 @@
 </script>
 
 <div
-	class={['h-full min-h-0 w-full overflow-hidden', className]}
+	class={[
+		'h-full min-h-0 w-full overflow-hidden',
+		tool !== 'navigate' && canEdit ? 'map-tool-active' : null,
+		className
+	]}
 	role="application"
 	aria-label="Indoor map"
 	{@attach mapAttach}
