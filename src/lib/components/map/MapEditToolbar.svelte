@@ -19,9 +19,11 @@
 		/** EDITOR / OWNER. */
 		canEdit?: boolean;
 		tool?: MapToolMode;
-		/** Creatable map tables for draw target. */
+		/** Draw target tables (create and/or assign to existing). */
+		drawTargets?: MapEntityCrudSpec[];
+		/** @deprecated Prefer drawTargets. */
 		createTargets?: MapEntityCrudSpec[];
-		/** Selected target table for new geometries. */
+		/** Selected target table for drawn geometries. */
 		targetTable?: string | null;
 		/** When true, drawing needs an active level filter. */
 		needsLevel?: boolean;
@@ -35,6 +37,7 @@
 	let {
 		canEdit = false,
 		tool = $bindable('navigate' as MapToolMode),
+		drawTargets,
 		createTargets = [],
 		targetTable = $bindable(null as string | null),
 		needsLevel = false,
@@ -44,7 +47,8 @@
 		onTargetChange
 	}: Props = $props();
 
-	const hasTargets = $derived(createTargets.length > 0);
+	const targets = $derived(drawTargets ?? createTargets);
+	const hasTargets = $derived(targets.length > 0);
 	const drawReady = $derived(
 		canEdit && hasTargets && (!needsLevel || Boolean(levelId)) && !disabled
 	);
@@ -89,7 +93,7 @@
 						? 'Pick a level before drawing'
 						: hasTargets
 							? 'Select a target table'
-							: 'No creatable map layers'}
+							: 'No drawable map layers'}
 				onclick={() => setTool('draw-polygon')}
 			>
 				<LassoIcon class="size-3.5" data-icon="inline-start" />
@@ -117,12 +121,12 @@
 					value={targetTable ?? ''}
 					disabled={disabled || !canEdit}
 					onchange={onTableSelect}
-					aria-label="Create target table"
+					aria-label="Draw target table"
 				>
-					{#if createTargets.length > 1}
+					{#if targets.length > 1}
 						<NativeSelect.Option value="">Choose table…</NativeSelect.Option>
 					{/if}
-					{#each createTargets as t (t.table)}
+					{#each targets as t (t.table)}
 						<NativeSelect.Option value={t.table}>{t.label}</NativeSelect.Option>
 					{/each}
 				</NativeSelect.Root>

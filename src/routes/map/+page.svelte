@@ -7,7 +7,7 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import MapView from '$lib/components/map/MapView.svelte';
 	import MapEditToolbar from '$lib/components/map/MapEditToolbar.svelte';
-	import AddRowModal from '$lib/components/table/AddRowModal.svelte';
+	import DrawFeatureModal from '$lib/components/map/DrawFeatureModal.svelte';
 	import ViewLoadingOverlay from '$lib/components/view/ViewLoadingOverlay.svelte';
 	import { ApiError, postFormAction } from '$lib/client/http';
 	import {
@@ -34,7 +34,7 @@
 	const userRoles = $derived((data.userRoles ?? []) as AppRole[]);
 	const roleCanEdit = $derived(canEdit(userRoles));
 
-	const createTargets = $derived(crud?.createTargets ?? []);
+	const drawTargets = $derived(crud?.drawTargets ?? crud?.createTargets ?? []);
 
 	const featureCount = $derived(
 		view ? view.layers.reduce((sum, layer) => sum + layer.features.length, 0) : 0
@@ -84,9 +84,9 @@
 		targetTable && crud?.byTable[targetTable] ? crud.byTable[targetTable]! : null
 	);
 
-	/** Prefer a single create target; auto-select when only one exists. */
+	/** Prefer a single draw target; auto-select when only one exists. */
 	$effect(() => {
-		const targets = createTargets;
+		const targets = drawTargets;
 		if (targets.length === 1) {
 			targetTable = targets[0]!.table;
 		} else if (targetTable && !targets.some((t) => t.table === targetTable)) {
@@ -235,6 +235,40 @@
 		}
 	}
 
+	async function submitAssign(recordId: string) {
+		if (!targetSpec || !draftGeo || createSubmitting) return;
+		try {
+			createSubmitting = true;
+			createError = null;
+			writeError = null;
+
+			const payload: Record<string, unknown> = {
+				table: targetSpec.table,
+				id: recordId,
+				geometry: JSON.stringify(draftGeo)
+			};
+			if (targetSpec.levelField && levelId) {
+				payload.level = levelId;
+			}
+
+			const result = await postFormAction<{ id?: string }>('assignFeature', payload);
+
+			clearDraft();
+			await invalidateAll();
+			const focusId = result.id ?? recordId;
+			if (focusId) appUi.focusRecord(focusId);
+		} catch (err) {
+			createError =
+				err instanceof ApiError
+					? err.message
+					: err instanceof Error
+						? err.message
+						: 'Failed to assign geometry';
+		} finally {
+			createSubmitting = false;
+		}
+	}
+
 	// Dialog cancel / dismiss discards the pending sketch
 		$effect(() => {
 			if (!createOpen && draftGeo && !createSubmitting) {
@@ -297,13 +331,13 @@
 			{/if}
 		{/if}
 
-		{#if roleCanEdit && createTargets.length > 0}
+		{#if roleCanEdit && drawTargets.length > 0}
 			<div class="ml-auto">
 				<MapEditToolbar
 					canEdit={roleCanEdit}
 					bind:tool
 					bind:targetTable
-					{createTargets}
+					{drawTargets}
 					{needsLevel}
 					{levelId}
 					disabled={levelLoading || createOpen}
@@ -365,8 +399,8 @@
 					</p>
 					{#if view.layers.length === 0}
 						<p class="text-xs">Enable map layers on entities in app_config.</p>
-					{:else if roleCanEdit && createTargets.length > 0}
-						<p class="text-xs">Use Draw to create polygons and fill data gaps.</p>
+					{:else if roleCanEdit && drawTargets.length > 0}
+						<p class="text-xs">Use Draw to create or assign polygons and fill data gaps.</p>
 					{/if}
 				</div>
 			{/if}
@@ -384,19 +418,20 @@
 	</div>
 </div>
 
-{#if roleCanEdit && targetSpec}
-	<AddRowModal
-			bind:open={createOpen}
-			title={`Create ${targetSpec.label}`}
-			description="Drawn geometry will be saved with this record."
-			fields={createFields}
-			recordOptions={createRecordOptions}
-			initialValues={createInitialValues}
-			lockedFields={lockedCreateFields}
-			submitting={createSubmitting}
-			error={createError}
-			submitLabel="Create on map"
-			errorTitle="Create failed"
-			onSubmit={submitCreate}
-		/>
-	{/if}
+	{#if roleCanEdit && targetSpec}
+			<DrawFeatureModal
+				bind:open={createOpen}
+				tableLabel={targetSpec.label}
+				table={targetSpec.table}
+				fields={createFields}
+				recordOptions={createRecordOptions}
+				initialValues={createInitialValues}
+				lockedFields={lockedCreateFields}
+				canCreate={targetSpec.canCreate}
+				canUpdate={targetSpec.canUpdate}
+				submitting={createSubmitting}
+				error={createError}
+				onCreate={submitCreate}
+				onAssign={submitAssign}
+			/>
+		{/if}

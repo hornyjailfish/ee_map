@@ -106,6 +106,7 @@ describe('buildMapCrudMeta', () => {
 	it('lists creatable polygon layers and form fields without geometry', () => {
 		const meta = buildMapCrudMeta(config());
 		expect(meta.createTargets.map((t) => t.table)).toEqual(['rents', 'zones']);
+		expect(meta.drawTargets.map((t) => t.table)).toEqual(['rents', 'zones']);
 		const rents = meta.byTable.rents!;
 		expect(rents.canCreate).toBe(true);
 		expect(rents.canUpdate).toBe(true);
@@ -140,12 +141,13 @@ describe('buildMapCrudMeta', () => {
 		expect(meta.createTargets.map((t) => t.table)).toEqual(['rents']);
 	});
 
-	it('omits createTargets when create permission is false but keeps byTable for update', () => {
+	it('omits createTargets when create is false but keeps drawTargets for assign', () => {
 		const rooms = entity('electric_rooms', {
 			permissions: { create: false, update: true, delete: false, select: true }
 		});
 		const meta = buildMapCrudMeta(config({ tables: [rooms] }));
 		expect(meta.createTargets).toHaveLength(0);
+		expect(meta.drawTargets.map((t) => t.table)).toEqual(['electric_rooms']);
 		expect(meta.byTable.electric_rooms?.canUpdate).toBe(true);
 		expect(meta.byTable.electric_rooms?.canCreate).toBe(false);
 	});

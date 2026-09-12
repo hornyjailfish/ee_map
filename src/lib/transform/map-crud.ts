@@ -33,8 +33,13 @@ export type MapEntityCrudSpec = {
 
 /** Serializable map CRUD payload for the page. */
 export type MapCrudMeta = {
-	/** Creatable map layers (draw target picker). */
+	/** Creatable map layers (draw → new record). */
 	createTargets: MapEntityCrudSpec[];
+	/**
+	 * Layers that can receive drawn geometry: create new and/or assign to existing.
+	 * Powers the draw target picker and post-draw modal.
+	 */
+	drawTargets: MapEntityCrudSpec[];
 	/** All map geometry tables keyed by name (create + update-capable). */
 	byTable: Record<string, MapEntityCrudSpec>;
 };
@@ -80,11 +85,15 @@ export function buildMapCrudMeta(config: ResolvedConfig): MapCrudMeta {
 		byTable[entity.name] = spec;
 	}
 
-	const createTargets = Object.values(byTable)
-		.filter((s) => s.canCreate && s.drawKinds.includes('polygon'))
+	const drawable = Object.values(byTable)
+		.filter(
+			(s) => (s.canCreate || s.canUpdate) && s.drawKinds.includes('polygon')
+		)
 		.sort((a, b) => a.zIndex - b.zIndex || a.table.localeCompare(b.table));
 
-	return { createTargets, byTable };
+	const createTargets = drawable.filter((s) => s.canCreate);
+
+	return { createTargets, drawTargets: drawable, byTable };
 }
 
 function resolveGeometryField(

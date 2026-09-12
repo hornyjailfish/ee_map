@@ -87,7 +87,7 @@
 			view: new View({
 				projection,
 				center: getCenter(initialExtent),
-				zoom: 2,
+				zoom: 0.3,
 				multiWorld: false
 			})
 		});
