@@ -4,17 +4,17 @@
  */
 
 import type { ElkNodeSize } from '$lib/transform/to-elk';
+import type { GraphCrudMeta } from '$lib/transform/graph-crud';
 import type { GraphEdge, GraphNode, GraphViewModel } from '$lib/transform/to-graph';
 
-/** Stable identity for `{#key}` remounts when the graph payload changes. */
-export function graphSignature(model: GraphViewModel): string {
+/** Node + layout identity — used for `{#key}` remounts (camera reset OK). */
+export function graphStructureSignature(model: GraphViewModel): string {
 	const nodePart = model.nodes
 		.map(
 			(n) =>
 				`${n.id}|${n.type ?? ''}|${n.parentId ?? ''}|${n.data.role}|${n.data.label}|${n.connectable ? 1 : 0}`
-		)
+			)
 		.join(';');
-	const edgePart = model.edges.map((e) => `${e.id}|${e.source}>${e.target}`).join(';');
 	const layout = model.layout;
 	const layoutPart = [
 		layout.direction,
@@ -26,7 +26,17 @@ export function graphSignature(model: GraphViewModel): string {
 		layout.compoundPadding.bottom,
 		layout.compoundPadding.right
 	].join('|');
-	return `${nodePart}#${edgePart}#${layoutPart}`;
+	return `${nodePart}#${layoutPart}`;
+}
+
+/** Edge-only identity — canvas stays mounted; edges sync in place (keep camera). */
+export function graphEdgeSignature(model: GraphViewModel): string {
+	return model.edges.map((e) => `${e.id}|${e.source}>${e.target}`).join(';');
+}
+
+/** Full identity (nodes + edges + layout). */
+export function graphSignature(model: GraphViewModel): string {
+	return `${graphStructureSignature(model)}#${graphEdgeSignature(model)}`;
 }
 
 /** Parent ids that have at least one child in the model. */
@@ -34,11 +44,39 @@ export function compoundIds(model: GraphViewModel): Set<string> {
 	return new Set(model.nodes.filter((n) => n.parentId).map((n) => n.parentId as string));
 }
 
+export type GraphNodeUiOpts = {
+	canEdit?: boolean;
+	crud?: GraphCrudMeta | null;
+};
+
+/** Annotate node data with EDITOR toolbar flags (add child / delete). */
+export function withNodeUiFlags(data: GraphNode['data'], opts: GraphNodeUiOpts): GraphNode['data'] {
+	const canEdit = Boolean(opts.canEdit);
+	const table = data.table;
+	const create = opts.crud?.createByParentTable[table];
+	const canAddChild = canEdit && Boolean(create?.canCreate);
+	const canDelete = canEdit && Boolean(opts.crud?.deleteByTable[table]);
+	const canUpdate = canEdit && Boolean(opts.crud?.updateByTable[table]);
+	const next = {
+		...data,
+		canEdit,
+		canAddChild,
+		canDelete,
+		canUpdate
+	};
+	if (canAddChild && create) {
+		next.addChildLabel = create.childRole || create.childLabel;
+	} else {
+		delete next.addChildLabel;
+	}
+	return next;
+}
+
 /**
  * Content-sized SF nodes parked at origin for measure phase.
  * Strips width/height so SF measures leaf content; ensures canConnect on wire endpoints.
  */
-export function toMeasureNodes(model: GraphViewModel): GraphNode[] {
+export function toMeasureNodes(model: GraphViewModel, ui: GraphNodeUiOpts = {}): GraphNode[] {
 	return model.nodes.map((n) => {
 		const role = n.data.role;
 		const canWire = n.connectable === true || role === 'breaker' || role === 'output';
@@ -47,10 +85,13 @@ export function toMeasureNodes(model: GraphViewModel): GraphNode[] {
 			...rest,
 			position: { x: 0, y: 0 },
 			connectable: canWire,
-			data: {
-				...n.data,
-				canConnect: canWire
-			}
+			data: withNodeUiFlags(
+				{
+					...n.data,
+					canConnect: canWire
+				},
+				ui
+			)
 		};
 		return node;
 	});
@@ -69,7 +110,8 @@ export function toFlowEdges(model: GraphViewModel): GraphEdge[] {
  */
 export function toLaidOutNodes(
 	model: GraphViewModel,
-	sizes?: Map<string, ElkNodeSize>
+	sizes?: Map<string, ElkNodeSize>,
+	ui: GraphNodeUiOpts = {}
 ): GraphNode[] {
 	const parents = compoundIds(model);
 
@@ -84,10 +126,13 @@ export function toLaidOutNodes(
 			...rest,
 			position: n.position ?? { x: 0, y: 0 },
 			connectable: canWire,
-			data: {
-				...n.data,
-				canConnect: canWire
-			}
+			data: withNodeUiFlags(
+				{
+					...n.data,
+					canConnect: canWire
+				},
+				ui
+			)
 		};
 
 		if (isCompound && size) {
@@ -97,6 +142,23 @@ export function toLaidOutNodes(
 		}
 
 		return node;
+	});
+}
+
+/**
+ * Patch current canvas nodes with a laid-out subset (subtree ELK).
+ * Nodes outside `onlyIds` keep position, size, and SF measured state.
+ */
+export function mergeLaidOutNodes(
+	current: GraphNode[],
+	laidOut: GraphNode[],
+	onlyIds: ReadonlySet<string>
+): GraphNode[] {
+	if (onlyIds.size === 0) return current;
+	const nextById = new Map(laidOut.map((n) => [n.id, n]));
+	return current.map((n) => {
+		if (!onlyIds.has(n.id)) return n;
+		return nextById.get(n.id) ?? n;
 	});
 }
 

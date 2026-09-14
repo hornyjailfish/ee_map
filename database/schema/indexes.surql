@@ -7,6 +7,7 @@ DEFINE INDEX unique_rent_name
     ON TABLE rents
     COLUMNS name, level
     UNIQUE;
+
 DEFINE INDEX unique_geometry
     ON TABLE rents
     COLUMNS geometry

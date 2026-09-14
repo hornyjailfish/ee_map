@@ -1,13 +1,26 @@
 <script lang="ts">
 	import type { Node, NodeProps } from '@xyflow/svelte';
 	import type { GraphNodeData } from '$lib/transform/to-graph';
+	import GraphNodeToolbar from '../GraphNodeToolbar.svelte';
+	import GraphNodePropsToolbar from '../GraphNodePropsToolbar.svelte';
+	import { getGraphNodeUi } from '../graph-node-ui';
 
 	type BoardNode = Node<GraphNodeData, 'board'>;
-	let { data, selected }: NodeProps<BoardNode> = $props();
+	let { id, data, selected, selectable, draggable }: NodeProps<BoardNode> = $props();
+
+	const nodeUi = getGraphNodeUi();
+
+	function onDoubleClick(e: MouseEvent) {
+		e.stopPropagation();
+		if (!selectable) nodeUi.setSelectable(id, true);
+	}
 </script>
 
 <!-- No handles: boards are containers, not edge endpoints. -->
-<div class={['board-node', selected && 'is-selected']}>
+<!-- svelte-ignore a11y_no_static_element_interactions (node double-click escape hatch for non-selectable nodes) -->
+	<div class={['board-node', selected && 'is-selected']} ondblclick={onDoubleClick}>
+	<GraphNodeToolbar {id} {data} />
+	<GraphNodePropsToolbar {id} {selectable} {draggable} />
 	<div class="board-node__body">
 		<span class="board-node__role">board</span>
 		<span class="board-node__label">{data.label}</span>
@@ -27,7 +40,7 @@
 		min-width: max-content;
 		border-radius: 0.5rem;
 		border: 1px dashed color-mix(in oklab, oklch(0.65 0.14 145) 50%, var(--border, #e5e5e5));
-		background: color-mix(in oklab, oklch(0.65 0.14 145) 10%, var(--muted, #f5f5f5));
+		background: color-mix(in oklab, oklch(0.65 0.14 145) 15%, var(--muted, #f5f5f5));
 		color: var(--card-foreground, #171717);
 		box-shadow: 0 1px 2px rgb(0 0 0 / 0.04);
 		font-size: 0.75rem;

@@ -13,9 +13,11 @@ import type {
 	ResolvedEntityDisplay,
 	ResolvedField
 } from '$lib/config/types';
+import type { SelectOption } from '$lib/option-types';
 import {
 	buildLabelIndex,
 	displayPathSegments,
+	formatRecordOption,
 	recordLinkFields,
 	tableOfId,
 	type RecordLabelIndex,
@@ -28,6 +30,128 @@ export type RecordLabelLoadResult = {
 	store: Map<string, Record<string, unknown>>;
 	labels: RecordLabelIndex;
 };
+
+/**
+ * Selectable record-link option for add-row / inline pickers.
+ * Multi-part display recipes become `{ label, group, itemLabel }` via formatRecordOption.
+ */
+export type RecordOption = SelectOption;
+
+/**
+ * Load every row of the record-link target tables on an entity, formatted as
+ * `{ id, label }[]` options for an add-row picker.
+ * Resolves multi-hop display recipes (e.g. boards → room.name · name) via the
+ * same BFS walk used by {@link loadRecordLabels}.
+ */
+export async function loadRecordOptions(
+	session: Surreal,
+	config: ResolvedConfig,
+	entity: ResolvedEntity
+): Promise<Record<string, RecordOption[]>> {
+	const linkFields = recordLinkFields(entity);
+	const out: Record<string, RecordOption[]> = {};
+	if (linkFields.length === 0) return out;
+
+	const store = new Map<string, Record<string, unknown>>();
+	const pending = new Set<string>();
+
+	// Seed with every row of every target table (not just referenced rows).
+	const targetTables = new Set<string>();
+	for (const field of linkFields) {
+		for (const target of field.recordTargets ?? []) {
+			if (isValidTableName(target)) targetTables.add(target);
+		}
+	}
+
+	await Promise.all(
+		[...targetTables].map(async (table) => {
+			const fetched = await selectAll(session, table);
+			for (const row of fetched) {
+				const id = normalizeRecordId(row.id) || '';
+				if (!id) continue;
+				store.set(id, normalizeRowRefs(row));
+				pending.add(id);
+			}
+		})
+	);
+
+	// Resolve multi-hop display dependencies (boards.room → electric_rooms.name).
+	const entityByName = new Map(config.tables.map((t) => [t.name, t]));
+	let guard = 0;
+	while (pending.size > 0 && guard < 8) {
+		guard += 1;
+		const batch = [...pending];
+		pending.clear();
+
+		const byTable = new Map<string, Set<string>>();
+		for (const id of batch) {
+			if (store.has(id)) continue;
+			const table = tableOfId(id);
+			if (!table || !isValidTableName(table)) continue;
+			let set = byTable.get(table);
+			if (!set) {
+				set = new Set();
+				byTable.set(table, set);
+			}
+			set.add(id);
+		}
+
+		await Promise.all(
+			[...byTable.entries()].map(async ([table, ids]) => {
+				const fetched = await selectByIds(session, table, [...ids]);
+				for (const row of fetched) {
+					const id = normalizeRecordId(row.id) || '';
+					if (!id) continue;
+					store.set(id, normalizeRowRefs(row));
+				}
+			})
+		);
+
+		for (const id of batch) {
+			const row = store.get(id);
+			if (!row) continue;
+			const table = tableOfId(id);
+			const targetEntity = table ? entityByName.get(table) : undefined;
+			const display = resolveDisplayForStoredId(id, linkFields, targetEntity, config);
+			enqueueDisplayHops(row, display, store, pending);
+			enqueueRecordFields(row, store, pending);
+		}
+	}
+
+	for (const field of linkFields) {
+		const targets = new Set(field.recordTargets ?? []);
+		const options: RecordOption[] = [];
+		for (const id of store.keys()) {
+			const table = tableOfId(id);
+			if (!table || !targets.has(table)) continue;
+			const display = resolveDisplayForStoredId(id, [field], entityByName.get(table), config);
+			options.push(formatRecordOption(id, display, store));
+		}
+		options.sort((a, b) => {
+			const ga = a.group ?? '';
+			const gb = b.group ?? '';
+			if (ga !== gb) return ga.localeCompare(gb, undefined, { numeric: true });
+			const la = a.itemLabel ?? a.label;
+			const lb = b.itemLabel ?? b.label;
+			return la.localeCompare(lb, undefined, { numeric: true });
+		});
+		out[field.name] = options;
+	}
+
+	return out;
+}
+
+/** Fetch all rows of a table (soft-capped, matching queryEntities defaults). */
+async function selectAll(session: Surreal, table: string): Promise<Record<string, unknown>[]> {
+	if (!isValidTableName(table)) return [];
+	try {
+		const all = await session.select<Record<string, unknown>>(new Table(table)).limit(500);
+		const list = Array.isArray(all) ? all : all == null ? [] : [all];
+		return list as Record<string, unknown>[];
+	} catch {
+		return [];
+	}
+}
 
 /**
  * From active-table rows + config, pull every related record needed for FK labels

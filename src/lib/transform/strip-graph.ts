@@ -40,6 +40,7 @@ function stripNode(node: GraphNode): GraphNode {
 	};
 	if (safeData.subtitle !== undefined) data.subtitle = safeData.subtitle;
 	if (safeData.canConnect !== undefined) data.canConnect = safeData.canConnect;
+	if (safeData.values !== undefined) data.values = safeData.values;
 
 	const out: GraphNode = {
 		id: node.id,

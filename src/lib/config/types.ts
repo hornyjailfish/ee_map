@@ -29,6 +29,10 @@ export type DiagnosticLevel = 'info' | 'warn' | 'error';
 export type FieldTypeName = string;
 
 // ─── Overlay (sparse deltas stored as app_config:main) ───────────────────────
+//
+// Soft contract: TS documents known keys; runtime soft-parse (overlay-io) keeps
+// unknown nested/top-level fields so the shape can evolve without migrations.
+// DB table is SCHEMALESS (view_configs.surql); seed uses INSERT IGNORE.
 
 export type AppConfigOverlay = {
 	version: 1;
@@ -107,10 +111,12 @@ export type FieldOverlay = {
 	label?: string;
 	hidden?: boolean;
 	/**
-	 * Column editor:
-	 * - `undefined` / omitted → default editor for field type
-	 * - `false` → non-editable cell
-	 * - `string` → named custom editor key
+	 * Column editor key (grid inline + add-row form share resolveFieldEditor):
+	 * - `undefined` / omitted → default for field type
+	 *   (`string`/`number`/`datetime` → `text`, `bool`/`record` → `combo`)
+	 * - `false` → non-editable
+	 * - `string` → registry key (`text`, `combo`, `richselect`, `datepicker`, …)
+	 *   Register components with `registerEditor(key, { inline?, form? })`.
 	 */
 	editor?: false | string;
 	width?: number;
@@ -213,6 +219,18 @@ export type AutoProfileField = {
 	optional?: boolean;
 };
 
+/**
+ * Table-level write capabilities from `INFO FOR DB STRUCTURE` (`permissions`).
+ * `true` = the permission is FULL; `false`/absent = not writable.
+ * Missing booleans are treated as `false` by merge (fail closed).
+ */
+export type TablePermissions = {
+	create?: boolean;
+	update?: boolean;
+	delete?: boolean;
+	select?: boolean;
+};
+
 export type AutoProfileTable = {
 	name: string;
 	kind: AutoProfileTableKind;
@@ -221,6 +239,8 @@ export type AutoProfileTable = {
 	/** Relation `OUT` table names when kind is `'relation'`. */
 	out?: string[];
 	fields: AutoProfileField[];
+	/** Live write capabilities from STRUCTURE (the per-table "drop modifications" flag). */
+	permissions?: TablePermissions;
 };
 
 export type AutoProfile = {
@@ -261,10 +281,10 @@ export type ResolvedField = {
 	hidden: boolean;
 	readOnly: boolean;
 	/**
-	 * Editor policy after merge:
-	 * - `undefined` → use default editor for `type`
+	 * Editor policy after merge (see FieldOverlay.editor):
+	 * - `undefined` → default for `type`
 	 * - `false` → non-editable
-	 * - `string` → named custom editor
+	 * - `string` → built-in or custom editor key
 	 */
 	editor?: false | string;
 	width?: number;
@@ -297,6 +317,11 @@ export type ResolvedEntity = {
 	name: string;
 	label: string;
 	fields: ResolvedField[];
+	/**
+	 * Normalized write capabilities (create/update/delete), all defaulting to `false`.
+	 * Views gate edit controls on this; server re-checks on every write.
+	 */
+	permissions: TablePermissions;
 	/**
 	 * How this entity labels itself when referenced (FK cells, pickers).
 	 * Omitted only when no field/parts/heuristic applies.
@@ -336,12 +361,18 @@ export type ResolvedEdge = {
 	out: string[];
 	/** Relation payload fields (excludes structural in/out id handling as needed by transforms). */
 	fields: ResolvedField[];
+	/** Normalized write capabilities (create/delete govern graph wire edits). */
+	permissions: TablePermissions;
 };
 
 /** Derived map layer from an entity with `map.enabled === true`. */
 export type ResolvedMapLayer = {
 	table: string;
-	levelField: string;
+	/**
+	 * FK used to filter by active level. Omitted for self-level tables (e.g. `levels`
+	 * floor plans): feature id is treated as the level id.
+	 */
+	levelField?: string;
 	geometryField: string;
 	layerGroup?: string;
 	/** Defaults to table name when overlay omits styleKey. */

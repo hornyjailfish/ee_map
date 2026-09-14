@@ -1,0 +1,8 @@
+#V2
+USE NS main DB main; INFO FOR TABLE levels STRUCTURE;
+USE NS main DB main; SELECT id, name, ord, geometry IS NONE AS no_geom, IF geometry IS NONE THEN NONE ELSE geometry.type END AS gtype FROM levels ORDER BY ord;
+USE NS main DB main; SELECT entities.levels FROM app_config:main;
+USE NS main DB main;
+UPDATE app_config:main SET  entities.levels.map = {    enabled: true,    geometryField: 'geometry',    layerGroup: 'background',    styleKey: 'levels',    zIndex: 0  },  entities.levels.table = {    order: ['ord', 'name', 'geometry'],    sort: 'ord'  };
+SELECT entities.levels FROM app_config:main;
+USE NS main DB main; SELECT entities.levels.map FROM app_config:main; SELECT count() FROM levels WHERE geometry IS NOT NONE GROUP ALL;

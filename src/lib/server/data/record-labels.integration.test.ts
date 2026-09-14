@@ -99,23 +99,23 @@ describe('live record labels → table view', () => {
 		const withBoard = view.data.filter((r) => r.board != null && r.board !== '');
 		expect(withBoard.length).toBeGreaterThan(0);
 
+		// Cells keep record ids for inline editors; labels stay on the index (and options).
 		for (const row of withBoard.slice(0, 20)) {
 			const cell = String(row.board);
-			// Must not look like a raw Surreal id for the board column
-			expect(cell).not.toMatch(/^boards:/);
-			expect(cell.length).toBeGreaterThan(0);
+			expect(cell).toMatch(/^boards:/);
+			const label = labels.get(cell);
+			expect(label).toBeTruthy();
+			expect(label).not.toMatch(/^boards:/);
+			expect(label!.includes(' · ')).toBe(true);
 		}
 
-		// Every resolved board cell should be composite room · board (same names across rooms)
-		const composite = withBoard.filter((r) => String(r.board).includes(' · '));
-		expect(composite.length).toBe(withBoard.length);
-
-		const sample = String(composite[0]!.board);
+		const sampleId = String(withBoard[0]!.board);
+		const sample = labels.get(sampleId)!;
 		const [roomPart, boardPart] = sample.split(' · ');
 		expect(roomPart?.length).toBeGreaterThan(0);
 		expect(boardPart?.length).toBeGreaterThan(0);
 		// eslint-disable-next-line no-console
-		console.info('[record-labels] breaker.board sample:', sample);
+		console.info('[record-labels] breaker.board sample:', sampleId, '→', sample);
 	});
 
 	it('boards.room and electric_rooms.level use entity display labels', async ({ skip }) => {
@@ -133,7 +133,11 @@ describe('live record labels → table view', () => {
 		});
 		const roomCell = boardView.data.find((r) => r.room != null)?.room;
 		expect(roomCell).toBeTruthy();
-		expect(String(roomCell)).not.toMatch(/^electric_rooms:/);
+		// Cell stores the record id; readable labels are on the label index / options.
+		expect(String(roomCell)).toMatch(/^electric_rooms:/);
+		const roomLabel = boardLabels.labels.get(String(roomCell));
+		expect(roomLabel).toBeTruthy();
+		expect(roomLabel).not.toMatch(/^electric_rooms:/);
 
 		const rooms = entityByName(config, 'electric_rooms')!;
 		const roomRows = await queryEntities(session!, 'electric_rooms');
@@ -145,8 +149,11 @@ describe('live record labels → table view', () => {
 		});
 		const levelCell = roomView.data.find((r) => r.level != null)?.level;
 		expect(levelCell).toBeTruthy();
-		expect(String(levelCell)).not.toMatch(/^levels:/);
+		expect(String(levelCell)).toMatch(/^levels:/);
+		const levelLabel = roomLabels.labels.get(String(levelCell));
+		expect(levelLabel).toBeTruthy();
+		expect(levelLabel).not.toMatch(/^levels:/);
 		// levels display is the level name (overlay: display.field = 'name')
-		expect(String(levelCell)).not.toMatch(/ · /);
+		expect(String(levelLabel)).not.toMatch(/ · /);
 	});
 });

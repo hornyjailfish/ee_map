@@ -24,7 +24,8 @@ function entity(
 		name,
 		label: name,
 		fields: fieldNames.map((n) => field(n)),
-		graph
+		graph,
+		permissions: { create: false, update: false, delete: false, select: false }
 	};
 }
 
@@ -35,6 +36,7 @@ function edge(
 	return {
 		name,
 		fields: [],
+		permissions: { create: false, update: false, delete: false, select: false },
 		...partial
 	};
 }

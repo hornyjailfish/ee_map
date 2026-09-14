@@ -1,15 +1,26 @@
 <script lang="ts">
 	import { Handle, Position, type Node, type NodeProps } from '@xyflow/svelte';
 	import type { GraphNodeData } from '$lib/transform/to-graph';
+	import GraphNodePropsToolbar from '../GraphNodePropsToolbar.svelte';
+	import { getGraphNodeUi } from '../graph-node-ui';
 
 	type OutputNode = Node<GraphNodeData, 'output'>;
-	let { data, selected, isConnectable }: NodeProps<OutputNode> = $props();
+	let { id, data, selected, selectable, draggable, isConnectable }: NodeProps<OutputNode> = $props();
+
+	const nodeUi = getGraphNodeUi();
 
 	/** Outputs are wiring endpoints (handles visible; drag requires nodesConnectable). */
 	const showHandles = $derived(data.canConnect !== false);
+
+	function onDoubleClick(e: MouseEvent) {
+		e.stopPropagation();
+		if (!selectable) nodeUi.setSelectable(id, true);
+	}
 </script>
 
-<div class={['output-node', selected && 'is-selected']}>
+<!-- svelte-ignore a11y_no_static_element_interactions (node double-click escape hatch for non-selectable nodes) -->
+	<div class={['output-node', selected && 'is-selected']} ondblclick={onDoubleClick}>
+		<GraphNodePropsToolbar {id} {selectable} {draggable} />
 	<div class="output-node__body">
 		<span class="output-node__role">output</span>
 		<span class="output-node__label">{data.label}</span>

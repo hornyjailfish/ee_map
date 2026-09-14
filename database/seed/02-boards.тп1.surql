@@ -81,6 +81,44 @@ INSERT IGNORE INTO boards [
     },
 ];
 
+{
+# автоматы в щите АВР 2-4
+    let $board = fn::get_board_from_room("АВР 2-4", $room);
+    INSERT IGNORE INTO breakers [
+        {
+            name: "Q1",
+            value: 250,
+            board: $board.id
+        },
+        {
+            name: "Q2",
+            value: 16,
+            board: $board.id
+        },
+        {
+            name: "Q3",
+            value: 16,
+            board: $board.id
+        },
+        {
+            name: "Q4",
+            value: 25,
+            board: $board.id
+        },
+        {
+            name: "Q5",
+            value: 16,
+            board: $board.id
+        },
+        {
+            name: "Q6",
+            value: 40,
+            board: $board.id
+        },
+    ];
+
+};
+
 INSERT IGNORE INTO boards [
     # щит с ручкой переключения ввода
     {
@@ -177,3 +215,33 @@ INSERT IGNORE INTO boards [
         room: $room.id
     },
 ];
+
+{
+# автоматы в маленькие щиты
+    let $board = fn::get_board_from_room("ЩО-1", $room);
+    INSERT IGNORE INTO breakers [
+        {
+            name: "Q0",
+            value: 80,
+            board: $board.id
+        },
+    ];
+
+    let $board = fn::get_board_from_room("ЩО-2", $room);
+    INSERT IGNORE INTO breakers [
+        {
+            name: "Q0",
+            value: 80,
+            board: $board.id
+        },
+    ];
+
+    let $board = fn::get_board_from_room("ЩАО", $room);
+    INSERT IGNORE INTO breakers [
+        {
+            name: "Q0",
+            value: 40,
+            board: $board.id
+        },
+    ];
+};

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-09-14T06:36:44.0089766Z",
+  "generatedAt": "2026-09-06T05:53:25.836506Z",
   "namespace": "main",
   "database": "main",
   "tables": [
@@ -388,7 +388,7 @@
     },
     {
       "name": "boards",
-      "define": "DEFINE TABLE boards TYPE NORMAL SCHEMAFULL PERMISSIONS NONE",
+      "define": "DEFINE TABLE boards TYPE NORMAL SCHEMAFULL PERMISSIONS FULL",
       "schemafull": true,
       "kind": "NORMAL",
       "fields": [
@@ -431,7 +431,7 @@
     },
     {
       "name": "breakers",
-      "define": "DEFINE TABLE breakers TYPE NORMAL SCHEMAFULL PERMISSIONS NONE",
+      "define": "DEFINE TABLE breakers TYPE NORMAL SCHEMAFULL PERMISSIONS FULL",
       "schemafull": true,
       "kind": "NORMAL",
       "fields": [
@@ -500,7 +500,7 @@
     },
     {
       "name": "connects",
-      "define": "DEFINE TABLE connects TYPE RELATION IN breakers OUT breakers | rents SCHEMALESS PERMISSIONS NONE",
+      "define": "DEFINE TABLE connects TYPE RELATION IN breakers OUT breakers | rents SCHEMALESS PERMISSIONS FULL",
       "schemafull": false,
       "kind": "RELATION",
       "fields": [
@@ -559,7 +559,7 @@
     },
     {
       "name": "electric_rooms",
-      "define": "DEFINE TABLE electric_rooms TYPE NORMAL SCHEMAFULL PERMISSIONS NONE",
+      "define": "DEFINE TABLE electric_rooms TYPE NORMAL SCHEMAFULL PERMISSIONS FULL",
       "schemafull": true,
       "kind": "NORMAL",
       "fields": [
@@ -728,25 +728,10 @@
     },
     {
       "name": "levels",
-      "define": "DEFINE TABLE levels TYPE NORMAL SCHEMAFULL PERMISSIONS NONE",
+      "define": "DEFINE TABLE levels TYPE NORMAL SCHEMAFULL PERMISSIONS FULL",
       "schemafull": true,
       "kind": "NORMAL",
       "fields": [
-        {
-          "name": "geometry.*",
-          "define": "DEFINE FIELD geometry.* ON levels TYPE geometry<line> PERMISSIONS FULL",
-          "type": {
-            "kind": "geometry",
-            "kinds": [
-              "line"
-            ]
-          },
-          "optional": false,
-          "flexible": false,
-          "readonly": false,
-          "hasDefault": false,
-          "rawType": "geometry<line>"
-        },
         {
           "name": "name",
           "define": "DEFINE FIELD name ON levels TYPE string PERMISSIONS FULL",
@@ -779,7 +764,7 @@
     },
     {
       "name": "rents",
-      "define": "DEFINE TABLE rents TYPE NORMAL SCHEMAFULL PERMISSIONS NONE",
+      "define": "DEFINE TABLE rents TYPE NORMAL SCHEMAFULL PERMISSIONS FULL",
       "schemafull": true,
       "kind": "NORMAL",
       "fields": [
@@ -841,7 +826,7 @@
     },
     {
       "name": "shops",
-      "define": "DEFINE TABLE shops TYPE NORMAL SCHEMAFULL PERMISSIONS NONE",
+      "define": "DEFINE TABLE shops TYPE NORMAL SCHEMAFULL PERMISSIONS FULL",
       "schemafull": true,
       "kind": "NORMAL",
       "fields": [
@@ -877,18 +862,18 @@
         },
         {
           "name": "area",
-          "define": "DEFINE FIELD area ON shops TYPE record<rents> PERMISSIONS FULL",
+          "define": "DEFINE FIELD area ON shops TYPE record<rents> | none PERMISSIONS FULL",
           "type": {
             "kind": "record",
             "tables": [
               "rents"
             ]
           },
-          "optional": false,
+          "optional": true,
           "flexible": false,
           "readonly": false,
           "hasDefault": false,
-          "rawType": "record<rents>"
+          "rawType": "record<rents> | none"
         },
         {
           "name": "name",
@@ -914,7 +899,7 @@
     },
     {
       "name": "zones",
-      "define": "DEFINE TABLE zones TYPE NORMAL SCHEMAFULL PERMISSIONS NONE",
+      "define": "DEFINE TABLE zones TYPE NORMAL SCHEMAFULL PERMISSIONS FULL",
       "schemafull": true,
       "kind": "NORMAL",
       "fields": [

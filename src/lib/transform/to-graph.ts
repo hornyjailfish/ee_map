@@ -23,6 +23,18 @@ export type GraphNodeData = {
 	isSource?: boolean;
 	/** @deprecated prefer canConnect */
 	isTarget?: boolean;
+	/** Client: EDITOR/OWNER — show node toolbar. */
+	canEdit?: boolean;
+	/** Client: can open add-child modal for this parent. */
+	canAddChild?: boolean;
+	/** Client: toolbar label for child entity (e.g. "board"). */
+	addChildLabel?: string;
+	/** Client: can delete this domain node. */
+	canDelete?: boolean;
+	/** Client: can edit this domain node's record (update permission). */
+	canUpdate?: boolean;
+	/** Serialized writable field values (edit form seed). */
+	values?: Record<string, string>;
 	raw?: Record<string, unknown>;
 };
 
@@ -171,6 +183,7 @@ function rowToNode(entity: ResolvedEntity, row: Record<string, unknown>): GraphN
 			table: entity.name,
 			role: graph.role,
 			canConnect: connectable,
+			values: serializeRowValues(row),
 			raw: row
 		}
 	};
@@ -273,6 +286,23 @@ function resolveOptionalField(
 	if (v == null) return undefined;
 	if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') return String(v);
 	return undefined;
+}
+
+/** Serialize record fields to plain strings for the client edit form (record refs → `table:id`). */
+function serializeRowValues(row: Record<string, unknown>): Record<string, string> {
+	const out: Record<string, string> = {};
+	for (const [key, value] of Object.entries(row)) {
+		if (key === 'id' || value == null) continue;
+		if (typeof value === 'object') {
+			const id = recordIdToString(value);
+			if (id != null) out[key] = id;
+			continue;
+		}
+		if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+			out[key] = String(value);
+		}
+	}
+	return out;
 }
 
 /** Stable topological order: each parent appears before its children. */

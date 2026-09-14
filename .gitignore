@@ -27,4 +27,4 @@ project.inlang/cache/
 # SQLite
 *.db
 
-data/bucket
+data/*

@@ -1,30 +1,42 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
+	import { goto, invalidateAll } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { navigating, page } from '$app/state';
-	import type { IApi } from '@svar-ui/grid-store';
 	import * as Alert from '$lib/components/ui/alert/index.js';
 	import * as Field from '$lib/components/ui/field/index.js';
 	import * as NativeSelect from '$lib/components/ui/native-select/index.js';
+	import { Button } from '$lib/components/ui/button/index.js';
+	import { Spinner } from '$lib/components/ui/spinner/index.js';
+	import AddRowModal from '$lib/components/table/AddRowModal.svelte';
 	import ViewLoadingOverlay from '$lib/components/view/ViewLoadingOverlay.svelte';
+	import {
+		editorValueFromDb,
+		ensureEditorsRegistered,
+		NONE_OPTION_ID,
+		resolveFieldEditor,
+		type EditorOption
+	} from '$lib/client/editors';
+
+	// Client-only: wire SVAR inline + form editor components once.
+	ensureEditorsRegistered();
+	import { ApiError, postFormAction } from '$lib/client/http';
 	import { tableOfRecordId } from '$lib/client/selection';
 	import { appUi } from '$lib/client/state/app-ui.svelte';
 	import { columnSortFn } from '$lib/transform/compare';
 	import type { TableColumn, TableRow, TableViewModel } from '$lib/transform/to-table';
-	import { Grid, Willow } from '@svar-ui/svelte-grid';
+	import {
+		Grid,
+		Willow,
+		type IApi,
+		type IColumnConfig,
+		type TMethodsConfig
+	} from '@svar-ui/svelte-grid';
 	import CircleAlertIcon from '@lucide/svelte/icons/circle-alert';
+	import PlusIcon from '@lucide/svelte/icons/plus';
+	import TrashIcon from '@lucide/svelte/icons/trash-2';
 	import type { PageData } from './$types';
 	import { untrack } from 'svelte';
-
-	/** SVAR column shape used for read-only grid (no editors). */
-	type SvarColumn = {
-		id: string;
-		header: string;
-		/** Natural / typed compare via columnSortFn; SVAR passes full rows. */
-		sort?: boolean | ((a: Record<string, unknown>, b: Record<string, unknown>) => -1 | 0 | 1);
-		width?: number;
-		flexgrow?: number;
-	};
+	import { canEdit } from '$lib/roles';
 
 	let { data }: { data: PageData } = $props();
 
@@ -33,9 +45,47 @@
 	const view = $derived(data.view);
 	const error = $derived(data.error);
 
-	const svarColumns = $derived(view ? toSvarColumns(view.columns) : []);
-	const gridData = $derived((view?.data ?? []) as TableRow[]);
+	const userRoles = $derived((data.userRoles ?? []) as import('$lib/catalog-types').AppRole[]);
+	/** Role gate: EDITOR/OWNER only. */
+	const roleCanEdit = $derived(canEdit(userRoles));
+	/** Table gate: live STRUCTURE permissions for the active table. */
+	const canUpdate = $derived(roleCanEdit && (view?.permissions.update ?? false));
+	const canCreate = $derived(roleCanEdit && (view?.permissions.create ?? false));
+	const canDelete = $derived(roleCanEdit && (view?.permissions.delete ?? false));
+
+	const svarColumns = $derived(view ? toSvarColumns(view.columns, canUpdate) : []);
+	/** Normalize null optional combo cells → '' so optionsMap shows None. */
+	const gridData = $derived.by(() => {
+		const rows = (view?.data ?? []) as TableRow[];
+		if (!view || rows.length === 0) return rows;
+		const nullableChoiceCols = view.columns.filter(
+			(c) => c.optional !== false && (c.valueType === 'record' || c.valueType === 'bool')
+		);
+		if (nullableChoiceCols.length === 0) return rows;
+		return rows.map((row) => {
+			let next: TableRow | null = null;
+			for (const c of nullableChoiceCols) {
+				const raw = row[c.id];
+				if (raw != null) continue;
+				if (!next) next = { ...row };
+				next[c.id] = NONE_OPTION_ID;
+			}
+			return next ?? row;
+		});
+	});
 	const hasRows = $derived(gridData.length > 0);
+
+	let writeError = $state<string | null>(null);
+	let writePending = $state(false);
+	/** Selected row ids, tracked from SVAR selection for delete enablement. */
+	let selectedRows = $state<string[]>([]);
+
+	/** Add-row modal state. */
+	let addOpen = $state(false);
+	let addSubmitting = $state(false);
+	let addError = $state<string | null>(null);
+
+	const recordOptions = $derived(data.recordOptions ?? {});
 
 	/** True while a same-route table switch is in flight. */
 	const tableLoading = $derived.by(() => {
@@ -59,9 +109,9 @@
 	 */
 	let lastFollowedFocusId: string | null | undefined = undefined;
 
-	function toSvarColumns(cols: TableColumn[]): SvarColumn[] {
+	function toSvarColumns(cols: TableColumn[], editable: boolean): IColumnConfig[] {
 		return cols.map((c) => {
-			const col: SvarColumn = {
+			const col: IColumnConfig = {
 				id: c.id,
 				header: c.header,
 				// Natural numeric-aware compare on every sortable column
@@ -73,9 +123,29 @@
 				// Fill remaining space when entity has no explicit width
 				col.flexgrow = 1;
 			}
-			// Read-only N5: never set editor
+
+			// Record labels (+ None when optional) so null cells display correctly.
+			const recordOpts = optionsForColumn(c);
+			const editor = resolveFieldEditor(c, recordOpts);
+			if (editor?.options) {
+				col.options = editor.options;
+			} else if (recordOpts) {
+				col.options = recordOpts;
+			}
+
+			// Editor key from field config / type default (components via registerEditor).
+			if (editable && editor) {
+				col.editor = editor.type;
+			}
 			return col;
 		});
+	}
+
+	/** Record-link options for a column (id + label + optional group). */
+	function optionsForColumn(c: TableColumn): EditorOption[] | null {
+		if (c.valueType !== 'record') return null;
+		const opts = recordOptions[c.id];
+		return opts && opts.length > 0 ? opts : null;
 	}
 
 	function switchTable(next: string, opts?: { clearForeignFocus?: boolean }) {
@@ -142,13 +212,96 @@
 			});
 		}
 	}
-
 	/** Grid maps `select-row` → `onselectrow`. */
-	function onselectrow(ev: { id?: string | number }) {
+	function onselectrow(ev: TMethodsConfig['select-row']) {
 		if (applyingExternalSelection) return;
 		const id = ev?.id != null ? String(ev.id) : null;
 		if (!id) return;
 		appUi.focusRecord(id);
+		selectedRows = [id];
+	}
+
+	/** Inline editor committed a cell → persist via server action, reload on failure. */
+	async function onupdatecell(ev: TMethodsConfig['update-cell']) {
+		const id = ev?.id != null ? String(ev.id) : '';
+		const column = ev?.column != null ? String(ev.column) : '';
+		if (!id || !column || !view) return;
+
+		// None / cleared combo → '' so FormData + coerceScalar store DB null.
+		const value = editorValueFromDb(ev.value);
+
+		try {
+			writePending = true;
+			writeError = null;
+			await postFormAction('updateCell', {
+				table: view.table,
+				id,
+				field: column,
+				value
+			});
+			await invalidateAll();
+		} catch (err) {
+			writeError = formatWriteError(err, 'Failed to save cell');
+			await invalidateAll();
+		} finally {
+			writePending = false;
+		}
+	}
+
+	/** Human-readable write failure (includes logical ActionResult status). */
+	function formatWriteError(err: unknown, fallback: string): string {
+		if (err instanceof ApiError) {
+			const code = err.code !== 'action_failed' ? ` [${err.code}]` : '';
+			return `${err.message}${code} (${err.status})`;
+		}
+		return err instanceof Error ? err.message : fallback;
+	}
+
+	/** Open the shared add-row modal. */
+	function openAddRow() {
+		if (!view || !canCreate) return;
+		addError = null;
+		writeError = null;
+		addOpen = true;
+	}
+
+	/** Submit create via table form action. */
+	async function submitAddRow(values: Record<string, string>) {
+		if (!view || addSubmitting) return;
+		try {
+			addSubmitting = true;
+			addError = null;
+			writeError = null;
+			const result = await postFormAction<{ id?: string }>('addRow', {
+				table: view.table,
+				...values
+			});
+			await invalidateAll();
+			addOpen = false;
+			if (result.id) appUi.focusRecord(result.id);
+		} catch (err) {
+			addError = formatWriteError(err, 'Failed to add row');
+		} finally {
+			addSubmitting = false;
+		}
+	}
+
+	/** Delete the currently selected row after confirmation. */
+	async function deleteSelected() {
+		if (!view || selectedRows.length === 0) return;
+		const id = selectedRows[0]!;
+		const ok = confirm(`Delete ${id}?`);
+		if (!ok) return;
+		try {
+			writePending = true;
+			writeError = null;
+			await postFormAction('deleteRow', { table: view.table, id });
+			await invalidateAll();
+		} catch (err) {
+			writeError = formatWriteError(err, 'Failed to delete row');
+		} finally {
+			writePending = false;
+		}
 	}
 
 	// Follow shared focus into another entity table (graph/map click → table view).
@@ -227,7 +380,42 @@
 		{:else}
 			<span class="text-sm font-medium tracking-tight">Table</span>
 		{/if}
+
+		{#if view && roleCanEdit}
+			<div class="ml-auto flex items-center gap-2">
+				<Button
+					type="button"
+					size="sm"
+					variant="outline"
+					disabled={!canCreate}
+					onclick={openAddRow}
+				>
+					<PlusIcon class="size-3.5" data-icon="inline-start" />
+					Add row
+				</Button>
+				<Button
+					type="button"
+					size="sm"
+					variant="outline"
+					disabled={!canDelete || selectedRows.length === 0 || writePending}
+					onclick={deleteSelected}
+				>
+					<TrashIcon class="size-3.5" data-icon="inline-start" />
+					Delete
+				</Button>
+			</div>
+		{/if}
 	</div>
+
+	{#if writeError}
+		<div class="shrink-0 px-4 pt-3">
+			<Alert.Root variant="destructive">
+				<CircleAlertIcon />
+				<Alert.Title>Write failed</Alert.Title>
+				<Alert.Description>{writeError}</Alert.Description>
+			</Alert.Root>
+		</div>
+	{/if}
 
 	{#if error && !tableLoading}
 		<div class="shrink-0 px-4 pt-3">
@@ -283,12 +471,23 @@
 							select={true}
 							init={initGrid}
 							{onselectrow}
+							{onupdatecell}
 						/>
 					</Willow>
 				</div>
 			{/key}
 		{/if}
 	</div>
+
+	<AddRowModal
+		bind:open={addOpen}
+		title={`Add row to ${tableLabel(activeTable)}`}
+		fields={view?.columns ?? []}
+		{recordOptions}
+		submitting={addSubmitting}
+		error={addError}
+		onSubmit={submitAddRow}
+	/>
 </div>
 
 <style>

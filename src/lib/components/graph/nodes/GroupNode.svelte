@@ -1,13 +1,24 @@
 <script lang="ts">
 	import type { Node, NodeProps } from '@xyflow/svelte';
 	import type { GraphNodeData } from '$lib/transform/to-graph';
+	import GraphNodePropsToolbar from '../GraphNodePropsToolbar.svelte';
+	import { getGraphNodeUi } from '../graph-node-ui';
 
 	type GroupNode = Node<GraphNodeData, 'group'>;
-	let { data, selected }: NodeProps<GroupNode> = $props();
+	let { id, data, selected, selectable, draggable }: NodeProps<GroupNode> = $props();
+
+	const nodeUi = getGraphNodeUi();
+
+	function onDoubleClick(e: MouseEvent) {
+		e.stopPropagation();
+		if (!selectable) nodeUi.setSelectable(id, true);
+	}
 </script>
 
 <!-- No handles: groups are containers, not edge endpoints. -->
-<div class={['group-node', selected && 'is-selected']}>
+<!-- svelte-ignore a11y_no_static_element_interactions (node double-click escape hatch for non-selectable nodes) -->
+	<div class={['group-node', selected && 'is-selected']} ondblclick={onDoubleClick}>
+		<GraphNodePropsToolbar {id} {selectable} {draggable} />
 	<div class="group-node__body">
 		<span class="group-node__role">group</span>
 		<span class="group-node__label">{data.label}</span>
