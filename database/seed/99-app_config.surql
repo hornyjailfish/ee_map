@@ -70,6 +70,21 @@ INSERT IGNORE INTO app_config [
 					sort: [{ field: 'board' }, { field: 'name' }]
 				}
 			},
+			rooms: {
+				label: 'Other rooms',
+				display: { field: 'name' },
+				graph: {
+					role: 'ignore'
+				},
+				map: {
+					enabled: true,
+					levelField: 'level',
+					geometryField: 'geometry',
+					layerGroup: 'rooms',
+					styleKey: 'rooms',
+					zIndex: 20
+				}
+			},
 			rents: {
 				label: 'Rents',
 				display: { field: 'name' },

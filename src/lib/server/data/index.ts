@@ -5,6 +5,8 @@ export {
 	type QueryEntitiesOptions
 } from './query-entities';
 
+export { queryRecordById } from './query-record';
+
 export {
 	DEFAULT_MAX_DISTANCE,
 	DEFAULT_SEARCH_LIMIT,

@@ -10,6 +10,12 @@ DEFINE FIELD name ON rents TYPE string;
 DEFINE FIELD level ON rents TYPE record<levels> | none;
 DEFINE FIELD geometry ON rents TYPE geometry<polygon> | none;
 
+# other rooms not rent nor electric
+DEFINE TABLE rooms SCHEMAFULL PERMISSIONS FULL;
+DEFINE FIELD name ON rooms TYPE option<string>;
+DEFINE FIELD level ON rooms TYPE record<levels> | none;
+DEFINE FIELD geometry ON rooms TYPE geometry<polygon> | none;
+
 # actual brand names that rent this areas
 DEFINE TABLE shops SCHEMAFULL PERMISSIONS FULL;
 DEFINE FIELD name ON shops TYPE string;
@@ -50,4 +56,3 @@ DEFINE FIELD marker ON embeddings TYPE geometry<point>;
 DEFINE FIELD image ON embeddings TYPE string | none ASSERT $value IS NONE OR <regex> '^f"images:/.*"$' = $value;
 
 # app_config lives in view_configs.surql (SCHEMALESS overlay document).
-

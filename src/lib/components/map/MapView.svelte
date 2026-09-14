@@ -6,7 +6,8 @@
 	 *
 	 * C4.1 create: DrawSnapSession when `tool` is draw-polygon / draw-point —
 	 * feature Snap + Shift-ortho + vertex alignment guides.
-	 * Modify interaction hooks are reserved (tool === 'modify') for the next slice.
+	 * C4.1b edit: ModifyVertexSession when `tool` is modify — move / add / remove corners.
+	 * C4.1c extrude: ModifyExtrudeSession when `tool` is extrude — polygon edge push/pull.
 	 */
 	import type { Attachment } from 'svelte/attachments';
 	import { untrack } from 'svelte';
@@ -25,12 +26,19 @@
 		normalizedToOl,
 		olToWritableGeoJSON,
 		type MapToolMode,
+		type ModifyCommit,
 		type WritableGeoJSON
 	} from '$lib/client/map';
 	import {
 		collectMapVectorSources,
 		DrawSnapSession
 	} from '$lib/client/map/draw-snap-session';
+	import {
+		findMapFeatureById,
+		ModifyVertexSession
+	} from '$lib/client/map/modify-vertex-session';
+	import { ModifyExtrudeSession } from '$lib/client/map/modify-extrude-session';
+	import { withVertexHandles } from '$lib/client/map/vertex-handles';
 	import { styleFor } from '$lib/client/registries/styles';
 	import type { MapFeature, MapViewModel, NormalizedGeometry } from '$lib/transform/to-map';
 	import 'ol/ol.css';
@@ -48,8 +56,12 @@
 		draftGeometry?: NormalizedGeometry | null;
 		/** Style key for draft sketch (defaults to `draw-draft`). */
 		draftStyleKey?: string;
+		/** Freeze vertex/edge drag while a geometry save is in flight / failed. */
+		modifyLocked?: boolean;
 		/** Fired when a draw tool completes a writable Point/Polygon. */
 		onDrawEnd?: (geometry: WritableGeoJSON) => void;
+		/** Fired when a vertex or edge edit finishes on the focused feature. */
+		onModifyEnd?: (commit: ModifyCommit) => void;
 		class?: string;
 	};
 
@@ -59,7 +71,9 @@
 		tool = 'navigate',
 		draftGeometry = null,
 		draftStyleKey = 'draw-draft',
+		modifyLocked = false,
 		onDrawEnd,
+		onModifyEnd,
 		class: className = ''
 	}: Props = $props();
 
@@ -154,19 +168,34 @@
 		map.on('singleclick', (evt) => {
 			// While drawing, let Draw own the click; skip selection changes mid-sketch.
 			if (drawBox.session) return;
+			// While a geometry save needs retry/cancel, keep focus stable.
+			if (toolBox.modifyLocked) return;
+
+			// Edit/extrude own pointer clicks (add/remove vertex, edge drag).
+			// Empty hits and Alt+click (delete vertex) must NOT clear focus — that
+			// unbinds the edit session and feels like a deselect after remove.
+			const editMode = toolBox.mode === 'modify' || toolBox.mode === 'extrude';
+			const original = evt.originalEvent as MouseEvent | PointerEvent | undefined;
+			if (editMode && original?.altKey) return;
 
 			const hit = map.forEachFeatureAtPixel(
 				evt.pixel,
 				(f) => f,
 				{
 					hitTolerance: 4,
-					layerFilter: (layer) => layer !== draftLayer
+					layerFilter: (layer) => {
+						if (layer === draftLayer) return false;
+						const role = layer.get('role');
+						return role !== 'snap-guides' && role !== 'extrude-highlight';
+					}
 				}
 			);
 			if (hit) {
 				const id = hit.getId();
 				appUi.focusRecord(id != null ? String(id) : null);
-			} else {
+			} else if (!editMode) {
+				// Navigate: click empty map clears selection.
+				// Edit/extrude: miss keeps the feature under edit selected.
 				appUi.focusRecord(null);
 			}
 		});
@@ -174,21 +203,58 @@
 		let lastExtentKey = initialExtent.join(',');
 		/** Mutable so OL style fn can read focus without subscribing the layer $effect. */
 		const focusBox: { id: string | null } = { id: untrack(() => appUi.focusedId) };
-		/** Latest draw callback without rebinding interaction on every render. */
-		const drawCb: { onDrawEnd?: (geometry: WritableGeoJSON) => void } = {
-			onDrawEnd: untrack(() => onDrawEnd)
+		/** Mutable edit-mode flags for style fn + click gate (no effect churn). */
+		const toolBox: { mode: MapToolMode; modifyLocked: boolean } = {
+			mode: untrack(() => tool),
+			modifyLocked: untrack(() => modifyLocked)
+		};
+		/** Latest callbacks without rebinding interactions on every render. */
+		const drawCb: {
+			onDrawEnd?: (geometry: WritableGeoJSON) => void;
+			onModifyEnd?: (commit: ModifyCommit) => void;
+		} = {
+			onDrawEnd: untrack(() => onDrawEnd),
+			onModifyEnd: untrack(() => onModifyEnd)
 		};
 		/** Draw + feature Snap + CAD alignment/ortho session (null when navigate). */
 		const drawBox: { session: DrawSnapSession | null } = { session: null };
+		/** Vertex modify session (null unless tool === modify). */
+		const modifyBox: { session: ModifyVertexSession | null } = { session: null };
+		/** Polygon edge-extrude session (null unless tool === extrude). */
+		const extrudeBox: { session: ModifyExtrudeSession | null } = { session: null };
 
 		function disposeDrawSession() {
 			drawBox.session?.dispose();
 			drawBox.session = null;
 		}
 
-		// Keep callback pointer fresh
+		function disposeModifySession() {
+			modifyBox.session?.dispose();
+			modifyBox.session = null;
+		}
+
+		function disposeExtrudeSession() {
+			extrudeBox.session?.dispose();
+			extrudeBox.session = null;
+		}
+
+		// Keep callback + lock pointers fresh
 		$effect(() => {
 			drawCb.onDrawEnd = onDrawEnd;
+			drawCb.onModifyEnd = onModifyEnd;
+		});
+
+		$effect(() => {
+			toolBox.mode = tool;
+			toolBox.modifyLocked = modifyLocked;
+			modifyBox.session?.setLocked(modifyLocked);
+			extrudeBox.session?.setLocked(modifyLocked);
+			for (const layer of map.getLayers().getArray()) {
+				if (layer === draftLayer) continue;
+				if (layer.get('role') === 'snap-guides') continue;
+				if (layer.get('role') === 'extrude-highlight') continue;
+				layer.changed();
+			}
 		});
 
 		// Layers + fit when MapViewModel changes (level navigation etc.)
@@ -198,8 +264,9 @@
 			const existing = [...map.getLayers().getArray()];
 			for (const layer of existing) {
 				if (layer === draftLayer) continue;
-				// DrawSnapSession owns the temporary H/V guide overlay.
-				if (layer.get('role') === 'snap-guides') continue;
+				// Draw/edit sessions own temporary overlays.
+				const role = layer.get('role');
+				if (role === 'snap-guides' || role === 'extrude-highlight') continue;
 				map.removeLayer(layer);
 			}
 
@@ -230,7 +297,12 @@
 						const styleKey =
 							(olFeature.get('styleKey') as string | undefined) ?? layerView.styleKey;
 						const focused = id != null && String(id) === focusBox.id;
-						return styleFor(styleKey, { focused });
+						const base = styleFor(styleKey, { focused });
+						// Show corner + mid-edge handles on the focused feature while Edit is active
+						if (focused && toolBox.mode === 'modify') {
+							return withVertexHandles(base, olFeature);
+						}
+						return base;
 					},
 					properties: {
 						table: layerView.table,
@@ -241,13 +313,17 @@
 				map.addLayer(vector);
 			}
 
-			// Keep draft + guides on top after layer rebuild
+			// Keep draft + guides / highlights on top after layer rebuild
 			draftLayer.setZIndex(10_000);
 			for (const layer of map.getLayers().getArray()) {
-				if (layer.get('role') === 'snap-guides') layer.setZIndex(10_050);
+				const role = layer.get('role');
+				if (role === 'extrude-highlight') layer.setZIndex(10_040);
+				if (role === 'snap-guides') layer.setZIndex(10_050);
 			}
-			// Layer sources changed — rebind feature snaps while a draw tool is active.
+			// Layer sources changed — rebind feature snaps while draw/edit is active.
 			drawBox.session?.rebindFeatureSnaps();
+			modifyBox.session?.rebindFeatureSnaps();
+			extrudeBox.session?.rebindFeatureSnaps();
 
 			const nextExtent = resolveExtent(v);
 			const key = nextExtent.join(',');
@@ -267,10 +343,11 @@
 			focusBox.id = appUi.focusedId;
 			for (const layer of map.getLayers().getArray()) {
 				if (layer === draftLayer) continue;
-				if (layer.get('role') === 'snap-guides') continue;
+				const role = layer.get('role');
+				if (role === 'snap-guides' || role === 'extrude-highlight') continue;
 				layer.changed();
 			}
-		});
+			});
 
 		// Pending draft geometry (after draw, before create submit / cancel)
 		$effect(() => {
@@ -291,7 +368,7 @@
 			}
 		});
 
-		// Draw + snap session — create tools only; modify reserved for next slice
+		// Draw + snap session — create tools only
 		$effect(() => {
 			const mode = tool;
 			const edit = canEdit;
@@ -300,9 +377,13 @@
 
 			const geomType = edit ? drawTypeForTool(mode) : null;
 			if (!geomType) {
-				element.style.cursor = '';
+				if (mode !== 'modify' && mode !== 'extrude') element.style.cursor = '';
 				return;
 			}
+
+			// Draw and geometry-edit tools are mutually exclusive
+			disposeModifySession();
+			disposeExtrudeSession();
 
 			const session = new DrawSnapSession({
 				map,
@@ -334,7 +415,119 @@
 			};
 		});
 
-		// Esc cancels in-progress draw (modify will share this later)
+		// Vertex edit session — move / add / remove corners on the focused feature
+		$effect(() => {
+			const mode = tool;
+			const edit = canEdit;
+			const focusedId = appUi.focusedId;
+			// Re-run after layer rebuild so features are findable again
+			void view;
+
+			disposeModifySession();
+
+			if (!edit || mode !== 'modify') {
+				if (mode !== 'draw-polygon' && mode !== 'draw-point' && mode !== 'extrude') {
+					element.style.cursor = '';
+				}
+				return;
+			}
+
+			disposeExtrudeSession();
+
+			const session = new ModifyVertexSession({
+				map,
+				getSnapSources: () => collectMapVectorSources(map, [draftSource]),
+				onCommit: (commit) => drawCb.onModifyEnd?.(commit)
+			});
+			session.setLocked(toolBox.modifyLocked);
+			modifyBox.session = session;
+
+			const bindFocused = () => {
+				const feature = focusedId ? findMapFeatureById(map, focusedId) : null;
+				session.setFeature(feature);
+				element.style.cursor = feature && !toolBox.modifyLocked ? 'grab' : '';
+			};
+			bindFocused();
+
+			// VectorSource loaders are async — rebind when features appear (e.g. focus from graph).
+			const sources = [...collectMapVectorSources(map, [draftSource])];
+			for (const source of sources) {
+				source.on('addfeature', bindFocused);
+				source.on('removefeature', bindFocused);
+				source.on('clear', bindFocused);
+			}
+
+			return () => {
+				for (const source of sources) {
+					source.un('addfeature', bindFocused);
+					source.un('removefeature', bindFocused);
+					source.un('clear', bindFocused);
+				}
+				if (modifyBox.session === session) {
+					session.dispose();
+					modifyBox.session = null;
+				}
+				element.style.cursor = '';
+			};
+		});
+
+		// Edge extrude session — push/pull nearest polygon edge along its normal
+		$effect(() => {
+			const mode = tool;
+			const edit = canEdit;
+			const focusedId = appUi.focusedId;
+			void view;
+
+			disposeExtrudeSession();
+
+			if (!edit || mode !== 'extrude') {
+				if (mode !== 'draw-polygon' && mode !== 'draw-point' && mode !== 'modify') {
+					element.style.cursor = '';
+				}
+				return;
+			}
+
+			disposeModifySession();
+
+			const session = new ModifyExtrudeSession({
+				map,
+				getSnapSources: () => collectMapVectorSources(map, [draftSource]),
+				onCommit: (commit) => drawCb.onModifyEnd?.(commit)
+			});
+			session.setLocked(toolBox.modifyLocked);
+			extrudeBox.session = session;
+
+			const bindFocused = () => {
+				const feature = focusedId ? findMapFeatureById(map, focusedId) : null;
+				const poly =
+					feature && feature.getGeometry()?.getType() === 'Polygon' ? feature : null;
+				session.setFeature(poly);
+				element.style.cursor = poly && !toolBox.modifyLocked ? 'grab' : '';
+			};
+			bindFocused();
+
+			const sources = [...collectMapVectorSources(map, [draftSource])];
+			for (const source of sources) {
+				source.on('addfeature', bindFocused);
+				source.on('removefeature', bindFocused);
+				source.on('clear', bindFocused);
+			}
+
+			return () => {
+				for (const source of sources) {
+					source.un('addfeature', bindFocused);
+					source.un('removefeature', bindFocused);
+					source.un('clear', bindFocused);
+				}
+				if (extrudeBox.session === session) {
+					session.dispose();
+					extrudeBox.session = null;
+				}
+				element.style.cursor = '';
+			};
+		});
+
+		// Esc cancels in-progress draw (edit exit is handled by the page tool state)
 		const onKeyDown = (ev: KeyboardEvent) => {
 			if (ev.key !== 'Escape') return;
 			if (drawBox.session) {
@@ -351,6 +544,8 @@
 			window.removeEventListener('keydown', onKeyDown);
 			resizeObserver.disconnect();
 			disposeDrawSession();
+			disposeModifySession();
+			disposeExtrudeSession();
 			map.setTarget(undefined);
 			map.dispose();
 		};

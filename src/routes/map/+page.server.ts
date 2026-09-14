@@ -13,6 +13,7 @@ import {
 	loadRecordOptions,
 	MutateError,
 	patchGeometry,
+	patchRecord,
 	queryEntities,
 	queryLevels,
 	type RecordOption
@@ -51,6 +52,10 @@ const assignFeatureSchema = z.object({
 	/** Optional level record id written with geometry when the table has a level field. */
 	level: z.string().optional()
 });
+
+const updateFeatureSchema = z
+	.object({ table: z.string().default(''), id: z.string().default('') })
+	.catchall(z.string());
 
 function emptyPage(partial?: Partial<MapPageData>): MapPageData {
 	return {
@@ -115,11 +120,11 @@ function parseLevelParam(raw: string | null): string | null {
 }
 
 async function resolveForMapWrite(
-	locals: App.Locals,
-	fetch: typeof globalThis.fetch,
-	table: unknown,
-	mode: 'create' | 'assign'
-): Promise<ResolvedEntity> {
+		locals: App.Locals,
+		fetch: typeof globalThis.fetch,
+		table: unknown,
+		mode: 'create' | 'assign' | 'update' | 'props'
+	): Promise<ResolvedEntity> {
 	if (!locals.session?.isConnected) {
 		throw new MutateError(503, 'db_unavailable', 'Database unavailable');
 	}
@@ -142,6 +147,18 @@ async function resolveForMapWrite(
 		throw new MutateError(400, 'no_geometry_field', `Table '${table}' has no geometry field`);
 	}
 
+	// Property panel: any map-layer table with update permission (includes floor plans).
+	if (mode === 'props') {
+		const onMap = config.map.layers.some((layer) => layer.table === table);
+		if (!onMap) {
+			throw new MutateError(403, 'readonly_table', `Table '${table}' is not a map layer`);
+		}
+		if (!entity.permissions.update) {
+			throw new MutateError(403, 'readonly_table', `Table '${table}' cannot be updated from the map`);
+		}
+		return entity;
+	}
+
 	const crud = buildMapCrudMeta(config);
 	const spec = crud.byTable[table];
 	if (!spec) {
@@ -150,7 +167,7 @@ async function resolveForMapWrite(
 	if (mode === 'create' && !spec.canCreate) {
 		throw new MutateError(403, 'readonly_table', `Table '${table}' cannot be created from the map`);
 	}
-	if (mode === 'assign' && !spec.canUpdate) {
+	if ((mode === 'assign' || mode === 'update') && !spec.canUpdate) {
 		throw new MutateError(403, 'readonly_table', `Table '${table}' cannot be updated from the map`);
 	}
 	if (!spec.drawKinds.includes('polygon') && !spec.drawKinds.includes('point')) {
@@ -272,6 +289,63 @@ function failFromError(err: unknown) {
 					extra[levelField] = level.trim();
 				}
 				await patchGeometry(locals.session!, entity, id, geometry, extra);
+				return { ok: true as const, id };
+			} catch (err) {
+				return failFromError(err);
+			}
+		},
+
+		/**
+		 * Patch scalar / record-link fields on a selected map feature (properties panel).
+		 * Form fields: table, id, plus writable column values.
+		 */
+		updateFeature: async ({ request, locals, fetch }) => {
+			const form = Object.fromEntries((await request.formData()).entries()) as Record<
+				string,
+				string
+			>;
+			const parsed = updateFeatureSchema.safeParse(form);
+			if (!parsed.success) {
+				return fail(400, { code: 'invalid_form', message: 'Invalid form data' });
+			}
+			const { table, id, ...values } = parsed.data;
+			if (!table.trim() || !id.trim()) {
+				return fail(400, { code: 'invalid_form', message: 'table and id are required' });
+			}
+
+			try {
+				const entity = await resolveForMapWrite(locals, fetch, table, 'props');
+				await patchRecord(locals.session!, entity, id, values);
+				return { ok: true as const, id };
+			} catch (err) {
+				return failFromError(err);
+			}
+		},
+
+		/**
+		 * Patch geometry on an existing row after vertex edit (no level side-effects).
+		 * Form fields: table, id, geometry (JSON Point | Polygon).
+		 */
+		updateGeometry: async ({ request, locals, fetch }) => {
+			const form = Object.fromEntries((await request.formData()).entries()) as Record<
+				string,
+				string
+			>;
+			const parsed = assignFeatureSchema.safeParse(form);
+			if (!parsed.success) {
+				return fail(400, { code: 'invalid_form', message: 'Invalid form data' });
+			}
+			const { table, id, geometry } = parsed.data;
+			if (!table.trim() || !id.trim() || !geometry.trim()) {
+				return fail(400, {
+					code: 'invalid_form',
+					message: 'table, id, and geometry are required'
+				});
+			}
+
+			try {
+				const entity = await resolveForMapWrite(locals, fetch, table, 'update');
+				await patchGeometry(locals.session!, entity, id, geometry);
 				return { ok: true as const, id };
 			} catch (err) {
 				return failFromError(err);

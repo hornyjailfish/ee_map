@@ -87,14 +87,14 @@
 			view: new View({
 				projection,
 				center: getCenter(initialExtent),
-				zoom: 0.3,
+				zoom: 18,
 				multiWorld: false
 			})
 		});
 
 		map.getView().fit(initialExtent, {
 			padding: [24, 24, 24, 24],
-			maxZoom: 8,
+			maxZoom: 18,
 			duration: 0
 		});
 
@@ -158,7 +158,7 @@
 				projection.setExtent(nextExtent);
 				map.getView().fit(nextExtent, {
 					padding: [24, 24, 24, 24],
-					maxZoom: 8,
+					maxZoom: 18,
 					duration: 0
 				});
 			}

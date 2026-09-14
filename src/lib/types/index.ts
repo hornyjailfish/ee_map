@@ -65,6 +65,13 @@ export interface Rents {
 	name: string;
 }
 
+export interface Rooms {
+	id: RecordId<'rooms'>;
+	geometry?: GeometryPolygon;
+	level?: RecordId<'levels'>;
+	name?: string;
+}
+
 export interface Shops {
 	id: RecordId<'shops'>;
 	aliases?: string[];
