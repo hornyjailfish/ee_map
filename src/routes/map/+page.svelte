@@ -132,9 +132,7 @@
 		if (!roleCanEdit || !focusedFeature || !crud) return false;
 		const spec = crud.byTable[focusedFeature.table];
 		if (!spec?.canUpdate) return false;
-		return (
-			focusedFeature.geometry.kind === 'polygon' && spec.drawKinds.includes('polygon')
-		);
+		return focusedFeature.geometry.kind === 'polygon' && spec.drawKinds.includes('polygon');
 	});
 
 	const modifyBlockedReason = $derived.by((): string | null => {
@@ -632,85 +630,89 @@
 			{/if}
 			<!-- OpenLayers is client-only (metric XY plane) -->
 			<MapView
-								{view}
-								canEdit={roleCanEdit && !createOpen && !createSubmitting}
-								tool={createOpen ? 'navigate' : tool}
-								draftGeometry={draftGeometry}
-								{modifyLocked}
-								onDrawEnd={onDrawEnd}
-								onModifyEnd={onModifyEnd}
-							/>
-							{#if appUi.focusedId && !createOpen}
-								<svelte:boundary>
-									{#snippet failed(error, reset)}
-										<aside
-											class="absolute top-2 right-2 z-30 w-[min(calc(100%-1rem),16.5rem)] rounded-md border border-border bg-background/95 p-2 shadow-md"
-										>
-											<p class="text-xs font-medium text-destructive">Properties failed to load</p>
-											<p class="mt-1 text-[11px] text-muted-foreground">
-												{error instanceof Error ? error.message : 'Unknown error'}
-											</p>
-											<div class="mt-1.5 flex gap-1.5">
-												<Button type="button" size="sm" class="h-7 px-2 text-xs" variant="outline" onclick={reset}
-													>Retry</Button
-												>
-												<Button
-													type="button"
-													size="sm"
-													class="h-7 px-2 text-xs"
-													variant="ghost"
-													onclick={() => appUi.focusRecord(null)}>Close</Button
-												>
-											</div>
-										</aside>
-									{/snippet}
-									{#snippet pending()}
-										<aside
-											class="absolute top-2 right-2 z-30 flex w-[min(calc(100%-1rem),16.5rem)] items-center gap-2 rounded-md border border-border bg-background/95 px-2 py-1.5 text-[11px] text-muted-foreground shadow-md"
-											aria-label="Loading feature properties"
-										>
-											<span
-												class="size-3 animate-spin rounded-full border-2 border-muted-foreground/30 border-t-muted-foreground"
-												aria-hidden="true"
-											></span>
-											Loading…
-										</aside>
-									{/snippet}
-									{#key appUi.focusedId}
-										<FeaturePropertiesPanel
-											recordId={appUi.focusedId}
-											canEdit={roleCanEdit}
-											submitting={propsSubmitting}
-											error={propsError}
-											onClose={() => {
-												propsError = null;
-												appUi.focusRecord(null);
-											}}
-											onSave={saveFeatureProperties}
-										/>
-									{/key}
-								</svelte:boundary>
-							{/if}
-						{:else}
-							<ViewLoadingOverlay label="Loading map…" veil={false} />
-						{/if}
-					</div>
-				</div>
-
-	{#if roleCanEdit && targetSpec}
-			<DrawFeatureModal
-				bind:open={createOpen}
-				tableLabel={targetSpec.label}
-				table={targetSpec.table}
-				fields={createFields}
-				recordOptions={createRecordOptions}
-				initialValues={createInitialValues}
-				lockedFields={lockedCreateFields}
-				canCreate={targetSpec.canCreate}
-				canUpdate={targetSpec.canUpdate}
-				submitting={createSubmitting}
-				error={createError}
-				onCreate={submitCreate}
-				onAssign={submitAssign}
+				{view}
+				canEdit={roleCanEdit && !createOpen && !createSubmitting}
+				tool={createOpen ? 'navigate' : tool}
+				{draftGeometry}
+				{modifyLocked}
+				{onDrawEnd}
+				{onModifyEnd}
 			/>
+			{#if appUi.focusedId && !createOpen}
+				<svelte:boundary>
+					{#snippet failed(error, reset)}
+						<aside
+							class="absolute top-2 right-2 z-30 w-[min(calc(100%-1rem),16.5rem)] rounded-md border border-border bg-background/95 p-2 shadow-md"
+						>
+							<p class="text-xs font-medium text-destructive">Properties failed to load</p>
+							<p class="mt-1 text-[11px] text-muted-foreground">
+								{error instanceof Error ? error.message : 'Unknown error'}
+							</p>
+							<div class="mt-1.5 flex gap-1.5">
+								<Button
+									type="button"
+									size="sm"
+									class="h-7 px-2 text-xs"
+									variant="outline"
+									onclick={reset}>Retry</Button
+								>
+								<Button
+									type="button"
+									size="sm"
+									class="h-7 px-2 text-xs"
+									variant="ghost"
+									onclick={() => appUi.focusRecord(null)}>Close</Button
+								>
+							</div>
+						</aside>
+					{/snippet}
+					{#snippet pending()}
+						<aside
+							class="absolute top-2 right-2 z-30 flex w-[min(calc(100%-1rem),16.5rem)] items-center gap-2 rounded-md border border-border bg-background/95 px-2 py-1.5 text-[11px] text-muted-foreground shadow-md"
+							aria-label="Loading feature properties"
+						>
+							<span
+								class="size-3 animate-spin rounded-full border-2 border-muted-foreground/30 border-t-muted-foreground"
+								aria-hidden="true"
+							></span>
+							Loading…
+						</aside>
+					{/snippet}
+					{#key appUi.focusedId}
+						<FeaturePropertiesPanel
+							recordId={appUi.focusedId}
+							canEdit={roleCanEdit}
+							submitting={propsSubmitting}
+							error={propsError}
+							onClose={() => {
+								propsError = null;
+								appUi.focusRecord(null);
+							}}
+							onSave={saveFeatureProperties}
+						/>
+					{/key}
+				</svelte:boundary>
+			{/if}
+		{:else}
+			<ViewLoadingOverlay label="Loading map…" veil={false} />
 		{/if}
+	</div>
+</div>
+
+{#if roleCanEdit && targetSpec}
+	<DrawFeatureModal
+		bind:open={createOpen}
+		tableLabel={targetSpec.label}
+		table={targetSpec.table}
+		fields={createFields}
+		recordOptions={createRecordOptions}
+		initialValues={createInitialValues}
+		lockedFields={lockedCreateFields}
+		canCreate={targetSpec.canCreate}
+		canUpdate={targetSpec.canUpdate}
+		submitting={createSubmitting}
+		error={createError}
+		onCreate={submitCreate}
+		onAssign={submitAssign}
+	/>
+{/if}
