@@ -2,7 +2,7 @@
 
 Internal tool for an electrical engineering team. Three views over the same Surreal data and session, driven by a shared configuration layer.
 
-**Status:** config spine + three read views + selection (N10) + table/graph CRUD (C0–C3) + overlay admin (N12) + map geometry **assign** (C4.0) + in-map **draw/create** (C4.1a). Header search deferred (N9). Next: vertex modify / clear (C4.1b).  
+**Status:** config spine + three read views + selection (N10) + table/graph CRUD (C0–C3) + overlay admin (N12) + map geometry **assign** (C4.0) + in-map **draw/create** (C4.1a). Header search deferred (N9). Next: vertex modify / clear (C4.1b); then **config entities slim-up (N13)**.  
 **Stack:** SvelteKit + Surreal session/auth + SurrealKit (schema/seed/typegen) + SVAR Grid + Svelte Flow/ELK + OpenLayers.  
 **Branch:** `feature/map-editor` (from `feature/crud`) — C4 map spatial work.
 
@@ -10,56 +10,59 @@ Internal tool for an electrical engineering team. Three views over the same Surr
 
 ## Current state (repo)
 
-| Area                                                               | Status                                        |
-| ------------------------------------------------------------------ | --------------------------------------------- |
-| SvelteKit app, Tailwind, Vitest                                    | Done                                          |
-| Surreal session/auth, header Session dialog, NS catalog            | Done                                          |
-| SurrealKit (`database/`, `surrealkit.toml`)                        | Done                                          |
-| Barebone `DEFINE` schema + some seeds (`levels`, `electric_rooms`) | Done                                          |
-| Typegen → `src/lib/types/` (SDK interfaces)                        | Done (regenerate after schema edits)          |
-| `app_config` overlay / merge / resolve                             | **N1–N3 done** (merge + live resolve + seed)  |
-| `AppUiState`, view nav, full-page chrome                           | **N4 done**                                   |
-| `/table`, `/graph`, `/map`                                                 | **N5–N8 done** + table writes (C1–C2 + C1.1) + graph wires/nodes (C3+) |
-| Shared focus (`appUi.focusedId`) across views                              | **N10 done**                                  |
-| `/config` overlay editor (OWNER)                                           | **N12 done**                                  |
-| `/map/assign` static GeoJSON → record geometry                             | **C4.0 done** (match assigned, search, hide)  |
-| Floor-plan layer (`levels.geometry` MultiLine + optional `levelField`)     | **C4.0b done** (schema/seed/to-map/OL)        |
-| In-map draw/create polygons on `/map`                                      | **C4.1a done** (tool modes + createFeature)   |
-| In-map vertex modify / clear geometry                                      | **C4.1b next**                                |
-| Header search                                                              | **Deferred** (embedding service; no data yet) |
+| Area                                                                   | Status                                                                 |
+| ---------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| SvelteKit app, Tailwind, Vitest                                        | Done                                                                   |
+| Surreal session/auth, header Session dialog, NS catalog                | Done                                                                   |
+| SurrealKit (`database/`, `surrealkit.toml`)                            | Done                                                                   |
+| Barebone `DEFINE` schema + some seeds (`levels`, `electric_rooms`)     | Done                                                                   |
+| Typegen → `src/lib/types/` (SDK interfaces)                            | Done (regenerate after schema edits)                                   |
+| `app_config` overlay / merge / resolve                                 | **N1–N3 done** (merge + live resolve + seed)                           |
+| `AppUiState`, view nav, full-page chrome                               | **N4 done**                                                            |
+| `/table`, `/graph`, `/map`                                             | **N5–N8 done** + table writes (C1–C2 + C1.1) + graph wires/nodes (C3+) |
+| Shared focus (`appUi.focusedId`) across views                          | **N10 done**                                                           |
+| `/config` overlay editor (OWNER)                                       | **N12 done**                                                           |
+| `/map/assign` static GeoJSON → record geometry                         | **C4.0 done** (match assigned, search, hide)                           |
+| Floor-plan layer (`levels.geometry` MultiLine + optional `levelField`) | **C4.0b done** (schema/seed/to-map/OL)                                 |
+| In-map draw/create polygons on `/map`                                  | **C4.1a done** (tool modes + createFeature)                            |
+| In-map vertex modify / clear geometry                                  | **C4.1b next**                                                         |
+| Config: slim entities + view-scoped overlay (N13)                      | **Planned** after C4.1b                                                |
+| Header search                                                          | **Deferred** (embedding service; no data yet)                          |
+| Map geometry painters / stamps (column, elevator, …)                   | **Deferred** (after N13; not in this pass)                             |
 
 ---
 
 ## Product facts
 
-| Area              | Decision                                                                                  |
-| ----------------- | ----------------------------------------------------------------------------------------- |
-| Users             | Internal EE team (`OWNER` / `EDITOR` / `VIEWER`)                                          |
-| Session           | Header Session dialog (ns / db / user) on `locals.session`                                |
-| Header            | View nav + session; **search later** (embeddings); optional level chip                    |
-| Layout            | **Full page** under header (`h-dvh`); table/graph/map containers fill + scroll internally |
-| Shared UI state   | Selection, focused id, active **level**, search query                                     |
-| Table             | Raw SVAR Grid show/edit; cosmetics later                                                  |
-| Graph             | Nest `electric_rooms → boards → breakers`; wires via `connects` RELATE                    |
-| Map               | Indoor, **raw XY ≈ meters**, no Web Mercator / geo “help”                                 |
-| Floors            | `levels`; features link via `level`                                                       |
-| Geometry          | Surreal `geometry<polygon>` / `point` in metric plane; map normalizes both                |
-| Tables            | **One table per business noun** even if columns match (no polymorphic mega-table)         |
-| Config            | Live schema introspect + sparse `app_config` overlay — not a TS field museum              |
-| Structure tooling | **SurrealKit** owns `.surql` schema, seed, migrations, typegen                            |
+| Area              | Decision                                                                                     |
+| ----------------- | -------------------------------------------------------------------------------------------- |
+| Users             | Internal EE team (`OWNER` / `EDITOR` / `VIEWER`)                                             |
+| Session           | Header Session dialog (ns / db / user) on `locals.session`                                   |
+| Header            | View nav + session; **search later** (embeddings); optional level chip                       |
+| Layout            | **Full page** under header (`h-dvh`); table/graph/map containers fill + scroll internally    |
+| Shared UI state   | Selection, focused id, active **level**, search query                                        |
+| Table             | Raw SVAR Grid show/edit; cosmetics later                                                     |
+| Graph             | Nest `electric_rooms → boards → breakers`; wires via `connects` RELATE                       |
+| Map               | Indoor, **raw XY ≈ meters**, no Web Mercator / geo “help”                                    |
+| Floors            | `levels`; features link via `level`                                                          |
+| Geometry          | Surreal `geometry<polygon>` / `point` in metric plane; map normalizes both                   |
+| Tables            | **One table per business noun** even if columns match (no polymorphic mega-table)            |
+| Config            | Live schema introspect + sparse `app_config` overlay — slim entities; graph/map scoped (N13) |
+| Structure tooling | **SurrealKit** owns `.surql` schema, seed, migrations, typegen                               |
 
 ---
 
 ## Ownership split
 
-| Asset                                   | Owner                                   | Notes                                         |
-| --------------------------------------- | --------------------------------------- | --------------------------------------------- |
-| `DEFINE TABLE/FIELD/…`                  | SurrealKit `database/schema/`           | Sync local / rollouts shared                  |
-| Sample rows                             | SurrealKit `database/seed/`             | levels, rooms, later boards…                  |
-| Generated row interfaces                | `surrealkit typegen` → `src/lib/types/` | Compile-time; **not** view driver             |
-| EE meaning (room/board/breaker, map on) | `app_config` overlay in DB              | Sparse; seed + later OWNER UI                 |
-| Presentation rules at runtime           | `ResolvedConfig`                        | Only input views use for columns/layers/nodes |
-| String → UI impl                        | Client registries                       | nodes, edges, OL styles                       |
+| Asset                                       | Owner                                   | Notes                                         |
+| ------------------------------------------- | --------------------------------------- | --------------------------------------------- |
+| `DEFINE TABLE/FIELD/…`                      | SurrealKit `database/schema/`           | Sync local / rollouts shared                  |
+| Sample rows                                 | SurrealKit `database/seed/`             | levels, rooms, later boards…                  |
+| Generated row interfaces                    | `surrealkit typegen` → `src/lib/types/` | Compile-time; **not** view driver             |
+| EE meaning (room/board/breaker, map layers) | `app_config` overlay in DB              | Sparse; seed + OWNER `/config`                |
+| Presentation rules at runtime               | `ResolvedConfig`                        | Only input views use for columns/layers/nodes |
+| View membership (`views[]`)                 | merge (server)                          | Derived — not stored in overlay               |
+| String → UI impl                            | Client registries                       | nodes, edges, OL styles                       |
 
 ```text
 database/schema/*.surql  ──SurrealKit──►  live DEFINE
@@ -170,60 +173,61 @@ Config is **presentation + query shaping**, not a second schema.
 4. ResolvedConfig (runtime, cacheable per ns/db)
 ```
 
-| Schema change | Maintenance                                       |
-| ------------- | ------------------------------------------------- |
-| New field     | Auto column; overlay optional                     |
-| New table     | Auto entity; set graph/map in overlay when needed |
-| EE semantics  | Overlay only                                      |
-| New RELATE    | Auto edge candidate; overlay visual role          |
-| Rename table  | `.surql` + rename overlay key + typegen           |
+| Schema change | Maintenance                                                                  |
+| ------------- | ---------------------------------------------------------------------------- |
+| New field     | Auto column; overlay optional                                                |
+| New table     | Auto entity (table default-on); add `graph.nodes` / `map.layers` when needed |
+| EE semantics  | Overlay only                                                                 |
+| New RELATE    | Auto edge candidate; set `graph.edges` visual role                           |
+| Rename table  | `.surql` + rename overlay keys (entity + graph/map) + typegen                |
 
 **Rule:** hardcode behavior **keys** (`nodeType`, `styleKey`, graph roles), not per-table field inventories in app code.
 
-**Overlay keys = table names** (simple). App logic resolves by **role** where possible (`graph.role === 'breaker'`). Soft diagnostics for orphan overlay keys / missing tables.
+**Overlay keys = table names** (under `entities`, `graph.nodes`, `map.layers`, `graph.edges`). App logic resolves graph by **role** where possible (`role === 'breaker'`). Soft diagnostics for orphan overlay keys / missing tables.
+
+**Target (N13):** `entities` stay identity + table presentation only. Graph/map per-table deltas live under `graph` / `map`. See **Config shape v2 — slim entities** below. _Shipped code is still v1 nested `entities.*.graph|map` until N13 lands._
 
 ### Overlay storage
 
 - Document: `app_config:main` in the active database
 - Structure: `DEFINE TABLE app_config` via SurrealKit
-- Seed: `database/seed/app_config.surql` (EE defaults)
-- Later: OWNER UI edits overlay only
+- Seed: `database/seed/99-app_config.surql` (+ additive patches e.g. `99b-…`) — EE defaults
+- OWNER UI (`/config`) edits overlay only
+- N13 rewrites seed to v2 shape; soft-parse still reads legacy v1 rows
 
 ### Overlay shape (contract)
 
+**Shipped today (v1):** nested `entities.<table>.{graph,map,table}` + top-level `edges` / `map` globals / `search`. Works; entity bag is overweight (`role: 'ignore'`, `map.enabled`, graph+map sitting on every noun).
+
+**Target (v2 / N13):** slim entities + view-scoped maps. Geometry stamp/painter registry is **out of scope** for N13.
+
 ```ts
+/** Overlay v2 — stored as app_config:main (soft-parse still keeps unknown keys). */
 type AppConfigOverlay = {
-	version: 1;
+	version: 2;
+	/** Global only — tables dropped from the whole product (not per-view). */
 	excludeTables?: string[];
-	entities?: Record<string, EntityOverlay>; // key = table name
-	edges?: Record<string, EdgeOverlay>; // key = relation table
-	map?: MapOverlay;
+	/** key = table name — identity + grid presentation only */
+	entities?: Record<string, EntityOverlay>;
+	graph?: GraphOverlay; // layout + nodes + edges
+	map?: MapOverlay; // plane globals + layers
 	search?: SearchOverlay;
 };
 
 type EntityOverlay = {
 	label?: string;
-	graph?: {
-		role: 'room' | 'board' | 'breaker' | 'output' | 'group' | 'ignore';
-		parentField?: string;
-		nodeType?: string;
-		labelField?: string;
-		subtitleField?: string;
-	};
-	map?: {
-		enabled?: boolean;
-		levelField?: string;
-		geometryField?: string;
-		layerGroup?: string;
-		styleKey?: string;
-		zIndex?: number;
-	};
-	table?: {
-		hide?: string[];
-		readOnly?: string[];
-		order?: string[];
-		fields?: Record<string, FieldOverlay>;
-	};
+	display?: EntityDisplayOverlay;
+	/** Grid presentation. `false` = hide from table picker (still in catalog for FK/labels). */
+	table?:
+		| false
+		| {
+				hide?: string[];
+				readOnly?: string[];
+				order?: string[];
+				sort?: string | TableSortKeyOverlay | TableSortKeyOverlay[];
+				fields?: Record<string, FieldOverlay>;
+		  };
+	// no graph / map here
 };
 
 type FieldOverlay = {
@@ -231,12 +235,55 @@ type FieldOverlay = {
 	hidden?: boolean;
 	editor?: false | string;
 	width?: number;
+	display?: EntityDisplayOverlay;
 };
 
-type EdgeOverlay = {
-	role?: 'feeds' | 'to-output' | 'other' | 'ignore';
-	edgeType?: string;
-	labelField?: string;
+type GraphOverlay = {
+	/** Defaults for the whole graph (root + compounds that omit overrides). */
+	layout?: {
+		direction?: 'DOWN' | 'RIGHT';
+		align?: 'start' | 'center' | 'balance';
+		spacing?: {
+			node?: number;
+			layer?: number;
+			edgeLayer?: number;
+			edgeEdge?: number;
+			edgeNode?: number;
+		};
+		compoundPadding?: { top?: number; left?: number; bottom?: number; right?: number };
+	};
+	/** key = table name; presence ⇒ participates in graph (no role: 'ignore') */
+	nodes?: Record<
+		string,
+		{
+			role: 'room' | 'board' | 'breaker' | 'output' | 'group';
+			parentField?: string;
+			nodeType?: string;
+			labelField?: string;
+			subtitleField?: string;
+			/**
+			 * Per-table ELK overrides for nodes of this table (especially compounds:
+			 * room/board/group). Merged on top of options derived from `graph.layout`.
+			 * Keys are ELK option strings, values stringified (`'elk.spacing.nodeNode'`, …).
+			 * Product-level knobs may also be accepted and normalized in merge/to-elk
+			 * (same vocabulary as `graph.layout`) — prefer those in seed/UI when enough.
+			 */
+			layoutOptions?: Record<string, string>;
+			/** Optional structured subset (same shape as sparse `graph.layout`) → ELK via to-elk. */
+			layout?: GraphOverlay['layout'];
+		}
+	>;
+	/** key = relation table; was top-level `edges` in v1 */
+	edges?: Record<
+		string,
+		{
+			role?: 'feeds' | 'to-output' | 'other' | 'ignore';
+			edgeType?: string;
+			labelField?: string;
+			/** Optional per-relation ELK edge options (sparse). */
+			layoutOptions?: Record<string, string>;
+		}
+	>;
 };
 
 type MapOverlay = {
@@ -245,10 +292,18 @@ type MapOverlay = {
 	extent?: [number, number, number, number];
 	levelsTable?: string; // default 'levels'
 	levelOrderField?: string; // default 'ord'
-	floorPlan?: {
-		byLevelField?: string;
-		imageExtentField?: string;
-	};
+	floorPlan?: { byLevelField?: string; imageExtentField?: string };
+	/** key = table name; presence ⇒ map layer (replaces entities.*.map + enabled: true) */
+	layers?: Record<
+		string,
+		{
+			levelField?: string;
+			geometryField?: string;
+			layerGroup?: string;
+			styleKey?: string;
+			zIndex?: number;
+		}
+	>;
 };
 
 type SearchOverlay = {
@@ -256,20 +311,111 @@ type SearchOverlay = {
 };
 ```
 
+#### Config shape v2 — design rules (N13)
+
+| Concern                           | Where                                           | Notes                                   |
+| --------------------------------- | ----------------------------------------------- | --------------------------------------- |
+| Drop from product                 | `excludeTables` (once)                          | Never copy into graph/map               |
+| Label / FK display / grid         | `entities.<table>`                              | Shared across views                     |
+| Graph participation + node knobs  | `graph.nodes.<table>`                           | Opt-in; omit = not in graph             |
+| Per-table ELK options             | `graph.nodes.<table>.layout` / `.layoutOptions` | Override globals for that table’s nodes |
+| Edge participation                | `graph.edges.<relation>`                        | Moved from top-level `edges`            |
+| Graph layout defaults (ELK)       | `graph.layout`                                  | Shipped; baseline for root + compounds  |
+| Map participation + layer knobs   | `map.layers.<table>`                            | Opt-in; no `enabled` flag               |
+| Map plane / levels table          | `map.*` globals                                 | Unchanged role                          |
+| Search fields                     | `search.fieldsByTable`                          | Unchanged                               |
+| “Which views does table support?” | **`ResolvedEntity.views`**                      | **Derived in merge** — not stored in DB |
+
+**Membership merge rules**
+
+- `table` ∈ views unless `entities[t].table === false` (or excluded).
+- `graph` ∈ views iff `graph.nodes[t]` present with a real role (no `ignore` key — just don’t list the table).
+- `map` ∈ views iff `map.layers[t]` present and resolvable (`geometryField` after heuristics).
+- Orphan `graph.nodes` / `map.layers` keys → diagnostics (same spirit as today’s orphan entity keys).
+- Do **not** dual-write `views: ['map']` in overlay — presence of layer/node **is** the source of truth.
+
+**Graph ELK layout layers (N13, aligns with current `to-elk`)**
+
+```text
+graph.layout                    → baseline root + default compound options
+       ↓
+graph.nodes[table].layout       → product knobs for that table (optional)
+       ↓
+graph.nodes[table].layoutOptions → raw ELK string map (wins on key clash)
+       ↓
+to-elk: each compound/leaf of that table gets merged layoutOptions
+```
+
+- Today compounds already get `compoundLayoutOptions(graph.layout)`; per-table map is the missing config hook (rooms vs boards may need different padding/spacing).
+- Leaves may carry options too when useful; root still uses global `graph.layout` (+ call-site overrides).
+- Prefer structured `layout` in seed/UI; allow `layoutOptions` escape hatch for ELK keys we have not promoted yet.
+- Optional later: `graph.edges[rel].layoutOptions` for edge routing — not required for first N13 cut if unused.
+
+**Resolved (read model) — still one object in layout**
+
+```ts
+type ResolvedEntity = {
+	name: string;
+	label: string;
+	fields: ResolvedField[];
+	permissions: TablePermissions;
+	display?: ResolvedEntityDisplay;
+	sort?: ResolvedTableSortKey[];
+	/** Derived: which product views include this table. */
+	views: Array<'table' | 'graph' | 'map'>;
+	// optional denorm for convenience during transition — may drop later:
+	// graph?: ResolvedEntityGraph;
+	// map?: ResolvedEntityMap;
+};
+
+type ResolvedConfig = {
+	version: 2;
+	tables: ResolvedEntity[];
+	relations: ResolvedEdge[];
+	graph: {
+		hierarchy: GraphHierarchyRole[];
+		layout: ResolvedGraphLayout;
+		/** node settings by table (from graph.nodes), including resolved per-table layoutOptions */
+		nodes: Record<string, ResolvedEntityGraph & { layoutOptions?: Record<string, string> }>;
+	};
+	map: ResolvedMap; // globals + layers[] (from map.layers)
+	search: ResolvedSearch;
+	diagnostics: Diagnostic[];
+	engine?: SurrealEngineVersion;
+};
+```
+
+- **Full `ResolvedConfig` stays on layout load** (already shipped) — metadata is small; cross-view chrome needs membership + labels.
+- Page loads still fetch **row data** only; they do not re-parse overlay for membership.
+- Writes keep calling `resolveAppConfig` on the server for allowlists.
+
+**Migration v1 → v2 (overlay-io / seed)**
+
+1. Soft-parse accepts both shapes; bump written `version` to `2` on save.
+2. Lift `entities[t].graph` → `graph.nodes[t]` (drop entries with `role: 'ignore'`).
+3. Lift `entities[t].map` → `map.layers[t]` when `enabled !== false` and geometry resolvable; drop `enabled`.
+4. Move top-level `edges` → `graph.edges`.
+5. Keep `entities[t].{label,display,table}` in place; strip nested graph/map from entities when rewriting seed / export.
+6. Tests: seed fixture, merge membership/`views`, ConfigEditor tabs (entity vs graph vs map).
+7. Consumers: `to-graph` / graph CRUD read `config.graph.nodes`; map stays on `config.map.layers`; table picker filters `views.includes('table')` (default almost all).
+
+**Deferred (not N13):** map geometry painters/stamps (column point → fancy symbol, elevator polygon → cabin art). May later add `anchor` / `variantField` on `map.layers` without fattening `entities`.
+
 ### First overlay seed (intent)
 
-| Key              | Intent                                                         |
-| ---------------- | -------------------------------------------------------------- |
-| `excludeTables`  | `__entity`, `__rollout`, `app_config`, `embeddings` (v1)       |
-| `electric_rooms` | graph `room`; map on; `level` + `geometry`                     |
-| `boards`         | graph `board`; `parentField: room`                             |
-| `breakers`       | graph `breaker`; `parentField: board`; label `name`            |
-| `connects`       | edge `feeds` (out to rents may map as to-output later)         |
-| `rents`          | map on; graph `ignore` or treat out-target as output           |
-| `zones`          | map on; graph ignore                                           |
-| `shops`          | table only                                                     |
-| `levels`         | `map.levelsTable`; not a normal grid entity (or special-cased) |
-| `map`            | `units: 'm'`, `plane: 'xy-meters'`, `levelOrderField: 'ord'`   |
+| Key / path                                        | Intent                                                                      |
+| ------------------------------------------------- | --------------------------------------------------------------------------- |
+| `excludeTables`                                   | `__entity`, `__rollout`, `app_config`, `embeddings` — **global once**       |
+| `entities.*`                                      | labels, display, table order/sort only                                      |
+| `graph.nodes.electric_rooms`                      | role `room`; optional per-table ELK `layout` / `layoutOptions`              |
+| `graph.nodes.boards`                              | role `board`; `parentField: room`; compound ELK overrides as needed         |
+| `graph.nodes.breakers`                            | role `breaker`; `parentField: board`                                        |
+| `graph.edges.connects`                            | role `feeds`; `labelField: cable`                                           |
+| `graph.layout`                                    | global ELK defaults (direction, align, spacing, compoundPadding)            |
+| `map.layers.electric_rooms`                       | level + geometry; style/zIndex                                              |
+| `map.layers.rents` / `zones` / `rooms` / `levels` | map only (no graph.nodes)                                                   |
+| `entities.shops`                                  | table only (no graph.nodes, no map.layers)                                  |
+| `map` globals                                     | `units: 'm'`, `plane: 'xy-meters'`, `levelsTable`, `levelOrderField: 'ord'` |
 
 ### Live INFO resolver (server)
 
@@ -311,25 +457,33 @@ type AutoProfile = {
 - RELATION → edge candidate
 - `record<…>` → link / parent candidate
 - name `level` + record→levels → level candidate
-- `geometry<…>` → geom candidate (**enabled only if overlay says so**)
+- `geometry<…>` → geom candidate (**layer only if listed under `map.layers` / v1 `entities.*.map.enabled`**)
 - other fields → default table columns
-- graph **roles** never inferred from schema alone
+- graph **roles** never inferred from schema alone; v2 roles only from `graph.nodes`
 
 **Cache:** by `ns + db` (invalidate on selection change). Optional TTL/schema hash later.
 
 ### Resolved output (views consume only this)
 
+**Shipped (v1):** `tables[]` with optional nested `graph` / `map` on each entity; `map.layers` derived from `map.enabled`; `graph` holds hierarchy + layout only; top-level `relations` from edges.
+
+**Target (v2 / N13):** see contract above — slim `ResolvedEntity` + derived `views[]`; `graph.nodes` + `map.layers` as view indexes. Layout still serves the full `ResolvedConfig`.
+
 ```ts
+// v2 sketch — concrete fields evolve with merge tests
 type ResolvedConfig = {
-	version: 1;
-	tables: ResolvedEntity[];
+	version: 2;
+	tables: ResolvedEntity[]; // includes views: ('table'|'graph'|'map')[]
 	relations: ResolvedEdge[];
-	map: ResolvedMap;
+	map: ResolvedMap; // globals + layers[]
 	search: { fieldsByTable: Record<string, string[]> };
 	graph: {
 		hierarchy: Array<'room' | 'board' | 'breaker' | 'output' | 'group'>;
+		layout: ResolvedGraphLayout;
+		nodes: Record<string, ResolvedEntityGraph>;
 	};
-	diagnostics?: Array<{ level: 'info' | 'warn' | 'error'; code: string; message: string }>;
+	diagnostics: Array<{ level: 'info' | 'warn' | 'error'; code: string; message: string }>;
+	engine?: SurrealEngineVersion;
 };
 ```
 
@@ -474,7 +628,7 @@ Resolved entity + rows → to-table → { data, columns } → <Grid />
 
 - Identity meter plane; extent from config or bbox
 - Level switcher → `AppUiState.levelId`
-- Layers from `map.enabled` entities
+- Layers from resolved `map.layers` (v1: entities with `map.enabled`; v2/N13: `map.layers.<table>` presence)
 - Geometry normalizer: polygon + point + **line** (LineString / MultiLineString) in **same** metric plane
 - Floor plans: `levels` as self-level background layer (`levelField` optional; row id = level)
 - Assign path: `/map/assign` (static `static/geo/**` → `patchGeometry`)
@@ -511,19 +665,22 @@ Resolved entity + rows → to-table → { data, columns } → <Grid />
 
 ### CRUD progress
 
-| #       | Slice                                       | Outcome                        |
-| ------- | ------------------------------------------- | ------------------------------ |
-| **C0**  | Server mutate module + role gate            | **Done**                       |
-| **C1**  | Table inline edit (SVAR) + patch            | **Done** (scalars + record combobox) |
-| **C1.1**| Inline record picker + grouped options      | **Done** (combobox; boards group by room) |
-| **C2**  | Table add/delete row                        | **Done** (modal + validation) |
-| **C3**   | Graph: persist `connects` on draw/delete   | **Done** (EDITOR/OWNER; SF edge-id fix; topology-only delete) |
-| **C3.1** | Graph: node create/delete + props toolbar  | **Done / polishing** (nested add, ELK packing) |
-| **C4.0** | Map assign: static geo → `patchGeometry`   | **Done** — `/map/assign`, assigned match, record search |
-| **C4.0b**| Levels floor-plan MultiLine background     | **Done** — schema + seed + to-map line + OL |
-| **C4.1a** | Map: draw polygon → create record + geom | **Done** — tools + `createFeature` action |
-| **C4.1b** | Map: vertex modify / clear geometry      | **Next** on `feature/map-editor` |
-| **N12**  | Light overlay admin UI (`/config`, OWNER)  | **Done** — soft overlay editor |
+| #         | Slice                                     | Outcome                                                       |
+| --------- | ----------------------------------------- | ------------------------------------------------------------- |
+| **C0**    | Server mutate module + role gate          | **Done**                                                      |
+| **C1**    | Table inline edit (SVAR) + patch          | **Done** (scalars + record combobox)                          |
+| **C1.1**  | Inline record picker + grouped options    | **Done** (combobox; boards group by room)                     |
+| **C2**    | Table add/delete row                      | **Done** (modal + validation)                                 |
+| **C3**    | Graph: persist `connects` on draw/delete  | **Done** (EDITOR/OWNER; SF edge-id fix; topology-only delete) |
+| **C3.1**  | Graph: node create/delete + props toolbar | **Done / polishing** (nested add, ELK packing)                |
+| **C4.0**  | Map assign: static geo → `patchGeometry`  | **Done** — `/map/assign`, assigned match, record search       |
+| **C4.0b** | Levels floor-plan MultiLine background    | **Done** — schema + seed + to-map line + OL                   |
+| **C4.1a** | Map: draw polygon → create record + geom  | **Done** — tools + `createFeature` action                     |
+| **C4.1b** | Map: vertex modify / clear geometry       | **Next** on `feature/map-editor`                              |
+| **N12**   | Light overlay admin UI (`/config`, OWNER) | **Done** — soft overlay editor                                |
+| **C4.1b** | Map: vertex modify / clear geometry       | **Next** on `feature/map-editor`                              |
+| **N12**   | Light overlay admin UI (`/config`, OWNER) | **Done** — soft overlay editor                                |
+| **N13**   | Slim entities overlay + derived `views[]` | **Planned** after C4.1b — see Config shape v2                 |
 
 ### Immediate coding focus
 
@@ -531,6 +688,12 @@ Resolved entity + rows → to-table → { data, columns } → <Grid />
 C4.1b — vertex modify / clear on /map (after create-first C4.1a)
   reuse: patchGeometry + MapToolMode modify/clear + OL Modify
   after: invalidate map load; keep appUi.focusedId + levelId
+
+N13 — config entities slim-up (after C4.1b; no painter registry)
+  overlay: entities = identity+table; graph.nodes; map.layers; graph.edges
+  merge: derive ResolvedEntity.views; lift v1 nested graph/map on read
+  graph.nodes[table].layout / layoutOptions → per-table ELK merge in to-elk
+  seed + ConfigEditor + consumer call sites (to-graph, table picker)
 ```
 
 **Shipped write seams:** table + graph wires/nodes + map **assign**. VIEWER is read-only
@@ -540,12 +703,12 @@ display recipe is multi-part.
 
 **C4 split**
 
-| Slice | UX | Persist |
-| ----- | -- | ------- |
-| C4.0 assign | Pick static feature + DB row | `patchGeometry` (+ optional level) |
+| Slice            | UX                                        | Persist                                      |
+| ---------------- | ----------------------------------------- | -------------------------------------------- |
+| C4.0 assign      | Pick static feature + DB row              | `patchGeometry` (+ optional level)           |
 | C4.0b floor plan | `levels.geometry` linework under features | seed / sync from `static/geo/*/base.geojson` |
-| C4.1a create | Draw polygon → modal → new row | `createRecord` + geometry |
-| C4.1b modify | Vertex drag / clear on focused feature | `patchGeometry` |
+| C4.1a create     | Draw polygon → modal → new row            | `createRecord` + geometry                    |
+| C4.1b modify     | Vertex drag / clear on focused feature    | `patchGeometry`                              |
 
 ### CRUD design (toward C0–C4)
 
@@ -641,6 +804,10 @@ App env (`SURREAL_URL`, WS) and kit env (`SURREALDB_HOST`, HTTP) may differ by p
 9. **Separate tables per noun**; shared _field names_, not shared tables.
 10. **Table stays boring until ops need polish.**
 11. **Full-page** view containers.
+12. **`excludeTables` is global once** — not per-view denylist.
+13. **Entity overlay = identity + grid**; graph/map deltas live under `graph` / `map` (N13).
+14. **View membership is derived in merge** (`views[]`) — never dual-stored in DB.
+15. **Graph ELK:** global `graph.layout` defaults; each `graph.nodes[table]` may override via `layout` / `layoutOptions`.
 
 ---
 
@@ -655,6 +822,8 @@ App env (`SURREAL_URL`, WS) and kit env (`SURREALDB_HOST`, HTTP) may differ by p
 - Overlay admin before table CRUD (C1) works — **cleared**
 - Header search until embeddings service + data exist (N9 deferred)
 - Map geometry editors before table + graph wire persist — **cleared** (C4.0 assign shipped; C4.1 editor next)
+- Map geometry **painters / stamps** (fancy column/elevator draw from point|polygon anchors) — deferred after N13
+- Storing FeatureCollection as Surreal `geometry` (not supported; use point/polygon anchors + optional later painters)
 
 ---
 
@@ -669,3 +838,7 @@ App env (`SURREAL_URL`, WS) and kit env (`SURREALDB_HOST`, HTTP) may differ by p
 7. Record `sort` default (config string) is client-side only — confirm SVAR header marks match on table reopen
 8. C4.1b: OL Modify interaction, clear-geometry, cross-level move policy; optional attach-drawn-geom to existing gap records
 9. Seed or sync pipeline: collapse `static/geo/*/base.geojson` → `levels.geometry`
+10. N13: keep optional denorm `entity.graph` / `entity.map` during consumer migration, or jump straight to `graph.nodes` + `map.layers` only
+11. N13: ConfigEditor IA — entity tab vs graph tab vs map layers tab
+12. N13: how much per-table ELK UI (structured layout only vs raw layoutOptions editor)
+13. Later: map layer `anchor` / `variantField` + client painters (columns, elevators) — not part of N13
