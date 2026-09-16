@@ -36,10 +36,12 @@
 	import * as Tabs from '$lib/components/ui/tabs/index.js';
 	import { Textarea } from '$lib/components/ui/textarea/index.js';
 	import CircleAlertIcon from '@lucide/svelte/icons/circle-alert';
+	import DownloadIcon from '@lucide/svelte/icons/download';
 	import PlusIcon from '@lucide/svelte/icons/plus';
 	import RotateCcwIcon from '@lucide/svelte/icons/rotate-ccw';
 	import SaveIcon from '@lucide/svelte/icons/save';
 	import TrashIcon from '@lucide/svelte/icons/trash-2';
+	import UploadIcon from '@lucide/svelte/icons/upload';
 	import { untrack } from 'svelte';
 
 	const GRAPH_ROLES = ['room', 'board', 'breaker', 'output', 'group', 'ignore'] as const;
@@ -91,10 +93,16 @@
 	let formMessage = $state<string | null>(null);
 	let formOk = $state(false);
 	let saving = $state(false);
+	let transferBusy = $state(false);
+	let transferMessage = $state<string | null>(null);
+	let transferOk = $state(false);
+	let importInput = $state<HTMLInputElement | null>(null);
 
 	const draftSafe = $derived(draft ?? emptyOverlay());
 	const dirty = $derived(stringifyOverlay(draftSafe) !== baseline);
-	const entityKeys = $derived(sortedKeys(draftSafe.entities as Record<string, unknown> | undefined));
+	const entityKeys = $derived(
+		sortedKeys(draftSafe.entities as Record<string, unknown> | undefined)
+	);
 	const edgeKeys = $derived(sortedKeys(draftSafe.edges as Record<string, unknown> | undefined));
 	const selectedEntity = $derived(
 		entityPick && entityKeys.includes(entityPick) ? entityPick : (entityKeys[0] ?? null)
@@ -286,6 +294,84 @@
 			}
 		};
 	};
+
+	async function onExportDb() {
+		transferMessage = null;
+		transferOk = false;
+		transferBusy = true;
+		try {
+			const response = await fetch('/config/export', {
+				method: 'GET',
+				headers: { accept: 'application/surrealql, text/plain, */*' }
+			});
+			if (!response.ok) {
+				const body = await response.text();
+				let message = body.slice(0, 300) || response.statusText || 'Export failed';
+				try {
+					const parsed = JSON.parse(body) as { message?: string };
+					if (typeof parsed.message === 'string' && parsed.message) {
+						message = parsed.message;
+					}
+				} catch {
+					/* plain text / html error page */
+				}
+				transferOk = false;
+				transferMessage = message;
+				return;
+			}
+
+			const blob = await response.blob();
+			const header = response.headers.get('content-disposition') ?? '';
+			const star = /filename\*=UTF-8''([^;]+)/i.exec(header);
+			const plain = /filename="?([^";]+)"?/i.exec(header);
+			const rawName = star?.[1] ? decodeURIComponent(star[1]) : plain?.[1];
+			const filename = rawName?.trim() || 'surreal-export.surql';
+
+			const url = URL.createObjectURL(blob);
+			const anchor = document.createElement('a');
+			anchor.href = url;
+			anchor.download = filename;
+			anchor.rel = 'noopener';
+			document.body.appendChild(anchor);
+			anchor.click();
+			anchor.remove();
+			URL.revokeObjectURL(url);
+
+			transferOk = true;
+			transferMessage = `Exported ${filename}`;
+		} catch (err) {
+			transferOk = false;
+			transferMessage = err instanceof Error ? err.message : 'Export failed';
+		} finally {
+			transferBusy = false;
+		}
+	}
+
+	const onImportDb: SubmitFunction = () => {
+		transferMessage = null;
+		transferOk = false;
+		transferBusy = true;
+		return async ({ result, update }) => {
+			try {
+				await update({ reset: true });
+				if (importInput) importInput.value = '';
+				if (result.type === 'failure') {
+					const data = result.data as { message?: string } | undefined;
+					transferOk = false;
+					transferMessage = data?.message ?? 'Import failed';
+					return;
+				}
+				if (result.type === 'success') {
+					const data = result.data as { filename?: string } | undefined;
+					transferOk = true;
+					transferMessage = data?.filename ? `Imported ${data.filename}` : 'Import complete';
+					await invalidateAll();
+				}
+			} finally {
+				transferBusy = false;
+			}
+		};
+	};
 </script>
 
 <div class="flex h-full min-h-0 flex-col">
@@ -349,6 +435,16 @@
 				</Alert.Root>
 			{/if}
 
+			{#if transferMessage}
+				<Alert.Root variant={transferOk ? 'default' : 'destructive'}>
+					<CircleAlertIcon />
+					<Alert.Title>
+						{transferOk ? 'Database transfer' : 'Transfer failed'}
+					</Alert.Title>
+					<Alert.Description>{transferMessage}</Alert.Description>
+				</Alert.Root>
+			{/if}
+
 			<Alert.Root>
 				<Alert.Title>Soft overlay contract</Alert.Title>
 				<Alert.Description>
@@ -391,6 +487,67 @@
 									Typical: app_config, embeddings, __entity, __rollout
 								</Field.FieldDescription>
 							</Field.Field>
+						</Card.Content>
+					</Card.Root>
+
+					<Card.Root>
+						<Card.Header>
+							<Card.Title>Database transfer</Card.Title>
+							<Card.Description>
+								OWNER-only dump of the active namespace/database as SurrealQL. Use this to move data
+								between machines when CLI import is blocked (NAT / HTTP path issues).
+							</Card.Description>
+						</Card.Header>
+						<Card.Content class="flex flex-col gap-4">
+							<div class="flex flex-wrap items-center gap-2">
+								<Button
+									type="button"
+									variant="outline"
+									size="sm"
+									disabled={transferBusy || saving}
+									onclick={onExportDb}
+								>
+									{#if transferBusy}
+										<Spinner data-icon="inline-start" />
+									{:else}
+										<DownloadIcon data-icon="inline-start" />
+									{/if}
+									Export .surql
+								</Button>
+							</div>
+
+							<form
+								method="POST"
+								action="?/importDb"
+								enctype="multipart/form-data"
+								class="flex flex-col gap-3 sm:flex-row sm:items-end"
+								use:enhance={onImportDb}
+							>
+								<Field.Field class="min-w-0 flex-1">
+									<Field.FieldLabel for="db-import-file">Import .surql</Field.FieldLabel>
+									<Input
+										bind:ref={importInput}
+										id="db-import-file"
+										type="file"
+										name="file"
+										accept=".surql,application/sql,text/plain"
+										required
+										disabled={transferBusy || saving}
+									/>
+									<Field.FieldDescription>
+										Runs statements from the dump against the current ns/db. Prefer a dump from
+										Export on the other machine.
+									</Field.FieldDescription>
+								</Field.Field>
+								<Button type="submit" size="sm" disabled={transferBusy || saving}>
+									{#if transferBusy}
+										<Spinner data-icon="inline-start" />
+									{:else}
+										<UploadIcon data-icon="inline-start" />
+									{/if}
+									Import
+								</Button>
+							</form>
 						</Card.Content>
 					</Card.Root>
 				</Tabs.Content>
