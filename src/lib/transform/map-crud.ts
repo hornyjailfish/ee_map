@@ -86,9 +86,7 @@ export function buildMapCrudMeta(config: ResolvedConfig): MapCrudMeta {
 	}
 
 	const drawable = Object.values(byTable)
-		.filter(
-			(s) => (s.canCreate || s.canUpdate) && s.drawKinds.includes('polygon')
-		)
+		.filter((s) => (s.canCreate || s.canUpdate) && s.drawKinds.includes('polygon'))
 		.sort((a, b) => a.zIndex - b.zIndex || a.table.localeCompare(b.table));
 
 	const createTargets = drawable.filter((s) => s.canCreate);
@@ -116,6 +114,21 @@ function resolveLevelField(entity: ResolvedEntity, layerLevelField?: string): st
 	}
 	const level = entity.fields.find((f) => f.name === 'level' && f.type === 'record');
 	return level?.name ?? null;
+}
+
+/**
+ * Remove owner-only / restricted tables from every index of the meta.
+ * Used by /map load to hide the floor-plan `levels` layer from EDITOR (draw is
+ * OWNER-gated), while the server write path re-checks the role independently.
+ */
+export function withoutTables(meta: MapCrudMeta, exclude: ReadonlySet<string>): MapCrudMeta {
+	const drawTargets = meta.drawTargets.filter((s) => !exclude.has(s.table));
+	const createTargets = meta.createTargets.filter((s) => !exclude.has(s.table));
+	const byTable: Record<string, MapEntityCrudSpec> = {};
+	for (const [table, spec] of Object.entries(meta.byTable)) {
+		if (!exclude.has(table)) byTable[table] = spec;
+	}
+	return { createTargets, drawTargets, byTable };
 }
 
 /**

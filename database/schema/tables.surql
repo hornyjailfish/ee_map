@@ -1,8 +1,9 @@
 DEFINE TABLE levels SCHEMAFULL PERMISSIONS FULL;
 DEFINE FIELD name ON levels TYPE string;
 DEFINE FIELD ord ON levels TYPE int DEFAULT 1;
-# Floor-plan background (base.geojson linework collapsed to MultiLineString)
-DEFINE FIELD OVERWRITE geometry ON levels TYPE geometry<multiline> | none;
+# Floor-plan background (base.geojson linework collapsed to MultiLineString).
+# polygon variant allows OWNER to hand-draw level footprints straight on the map.
+DEFINE FIELD OVERWRITE geometry ON levels TYPE geometry<multiline> | geometry<polygon> | none;
 
 # only rentable areas
 DEFINE TABLE rents SCHEMAFULL PERMISSIONS FULL;
