@@ -14,6 +14,8 @@ export type {
 	TableSortKeyOverlay,
 	FieldOverlay,
 	EdgeOverlay,
+	GraphNodeOverlay,
+	MapLayerOverlay,
 	MapOverlay,
 	SearchOverlay,
 	GraphOverlay,
@@ -43,18 +45,23 @@ export type {
 	ResolvedSearch,
 	ResolvedGraph,
 	ResolvedGraphLayout,
-	ResolvedConfig
+	ResolvedGraphNode,
+	ResolvedConfig,
+	ProductView
 } from './types';
 
 export { merge, DEFAULT_GRAPH_LAYOUT } from './merge';
 export { parseSurrealVersion, engineAtLeast } from './surreal-version';
 export {
 	OVERLAY_DOC_ID,
+	OVERLAY_VERSION,
 	emptyOverlay,
 	cloneOverlay,
 	stringifyOverlay,
 	parseOverlayJson,
 	softParseOverlay,
+	liftOverlayV1toV2,
+	overlayV2toV1,
 	parseStringList,
 	formatStringList,
 	parseSortText,

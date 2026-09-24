@@ -111,11 +111,12 @@ export function assertCanUnrelate(relation: ResolvedEdge): void {
 
 /**
  * Coerce a raw client value for a scalar/record field.
- * Empty / null / undefined → DB `null` for optional fields (None in combo editors).
+ * Empty / undefined / null → `undefined` for optional fields, which the SDK serializes
+ * to SurrealDB `NONE` (clears the field on MERGE). `NONE` reads back as a missing key.
  */
 export function coerceScalar(field: ResolvedField, raw: unknown): unknown {
 	if (raw === '' || raw === undefined || raw === null) {
-		// Explicit null so MERGE clears the field (undefined keys are omitted by JSON/SDK).
+		// undefined → NONE in the SDK (surrealdb v2); never null (null → NULL, a distinct type).
 		if (field.optional) return undefined;
 		throw new MutateError(400, 'required_field', `Field '${field.name}' is required`);
 	}

@@ -2,9 +2,9 @@
 
 Internal tool for an electrical engineering team. Three views over the same Surreal data and session, driven by a shared configuration layer.
 
-**Status:** config spine + three read views + selection (N10) + table/graph CRUD (C0–C3) + overlay admin (N12) + map geometry **assign** (C4.0) + in-map **draw/create** (C4.1a). Header search deferred (N9). Next: vertex modify / clear (C4.1b); then **config entities slim-up (N13)**.  
+**Status:** config spine + three read views + selection (N10) + table/graph CRUD (C0–C3) + overlay admin (N12) + map spatial writes through **C4.1c** (assign, floor plan, draw/create, vertex edit, edge extrude). Header search deferred (N9). Optional leftover: clear-geometry tool. **Next: config entities slim-up (N13)**.  
 **Stack:** SvelteKit + Surreal session/auth + SurrealKit (schema/seed/typegen) + SVAR Grid + Svelte Flow/ELK + OpenLayers.  
-**Branch:** `feature/map-editor` (from `feature/crud`) — C4 map spatial work.
+**Branch:** `main` (map draw/snap + edit tools merged).
 
 ---
 
@@ -24,9 +24,11 @@ Internal tool for an electrical engineering team. Three views over the same Surr
 | `/config` overlay editor (OWNER)                                       | **N12 done**                                                           |
 | `/map/assign` static GeoJSON → record geometry                         | **C4.0 done** (match assigned, search, hide)                           |
 | Floor-plan layer (`levels.geometry` MultiLine + optional `levelField`) | **C4.0b done** (schema/seed/to-map/OL)                                 |
-| In-map draw/create polygons on `/map`                                  | **C4.1a done** (tool modes + createFeature)                            |
-| In-map vertex modify / clear geometry                                  | **C4.1b next**                                                         |
-| Config: slim entities + view-scoped overlay (N13)                      | **Planned** after C4.1b                                                |
+| In-map draw/create polygons on `/map`                                  | **C4.1a done** (tool modes + createFeature + assign-to-existing)       |
+| In-map vertex modify + CAD snap                                        | **C4.1b done** (ModifyVertexSession + updateGeometry)                  |
+| In-map edge extrude                                                    | **C4.1c done** (ModifyExtrudeSession; same save path as modify)        |
+| Clear geometry tool / draw-point                                       | **Leftover** (`MAP_FUTURE_TOOLS`; not blocking N13)                    |
+| Config: slim entities + view-scoped overlay (N13)                      | **In progress** — config layer (types/lift/merge/seed) done; see below |
 | Header search                                                          | **Deferred** (embedding service; no data yet)                          |
 | Map geometry painters / stamps (column, elevator, …)                   | **Deferred** (after N13; not in this pass)                             |
 
@@ -665,50 +667,56 @@ Resolved entity + rows → to-table → { data, columns } → <Grid />
 
 ### CRUD progress
 
-| #         | Slice                                     | Outcome                                                       |
-| --------- | ----------------------------------------- | ------------------------------------------------------------- |
-| **C0**    | Server mutate module + role gate          | **Done**                                                      |
-| **C1**    | Table inline edit (SVAR) + patch          | **Done** (scalars + record combobox)                          |
-| **C1.1**  | Inline record picker + grouped options    | **Done** (combobox; boards group by room)                     |
-| **C2**    | Table add/delete row                      | **Done** (modal + validation)                                 |
-| **C3**    | Graph: persist `connects` on draw/delete  | **Done** (EDITOR/OWNER; SF edge-id fix; topology-only delete) |
-| **C3.1**  | Graph: node create/delete + props toolbar | **Done / polishing** (nested add, ELK packing)                |
-| **C4.0**  | Map assign: static geo → `patchGeometry`  | **Done** — `/map/assign`, assigned match, record search       |
-| **C4.0b** | Levels floor-plan MultiLine background    | **Done** — schema + seed + to-map line + OL                   |
-| **C4.1a** | Map: draw polygon → create record + geom  | **Done** — tools + `createFeature` action                     |
-| **C4.1b** | Map: vertex modify / clear geometry       | **Next** on `feature/map-editor`                              |
-| **N12**   | Light overlay admin UI (`/config`, OWNER) | **Done** — soft overlay editor                                |
-| **C4.1b** | Map: vertex modify / clear geometry       | **Next** on `feature/map-editor`                              |
-| **N12**   | Light overlay admin UI (`/config`, OWNER) | **Done** — soft overlay editor                                |
-| **N13**   | Slim entities overlay + derived `views[]` | **Planned** after C4.1b — see Config shape v2                 |
+| #         | Slice                                     | Outcome                                                                |
+| --------- | ----------------------------------------- | ---------------------------------------------------------------------- |
+| **C0**    | Server mutate module + role gate          | **Done**                                                               |
+| **C1**    | Table inline edit (SVAR) + patch          | **Done** (scalars + record combobox)                                   |
+| **C1.1**  | Inline record picker + grouped options    | **Done** (combobox; boards group by room)                              |
+| **C2**    | Table add/delete row                      | **Done** (modal + validation)                                          |
+| **C3**    | Graph: persist `connects` on draw/delete  | **Done** (EDITOR/OWNER; SF edge-id fix; topology-only delete)          |
+| **C3.1**  | Graph: node create/delete + props toolbar | **Done / polishing** (nested add, ELK packing)                         |
+| **C4.0**  | Map assign: static geo → `patchGeometry`  | **Done** — `/map/assign`, assigned match, record search                |
+| **C4.0b** | Levels floor-plan MultiLine background    | **Done** — schema + seed + to-map line + OL                            |
+| **C4.1a** | Map: draw polygon → create / assign geom  | **Done** — DrawSnapSession + `createFeature` + existing-record attach  |
+| **C4.1b** | Map: vertex modify + CAD snap             | **Done** — ModifyVertexSession + `updateGeometry` + pending save/retry |
+| **C4.1c** | Map: polygon edge extrude                 | **Done** — ModifyExtrudeSession (shared commit UX with modify)         |
+| **C4.1d** | Map: clear geometry on focused feature    | **Optional leftover** — tool reserved in `MAP_FUTURE_TOOLS`            |
+| **N12**   | Light overlay admin UI (`/config`, OWNER) | **Done** — soft overlay editor                                         |
+| **N13**   | Slim entities overlay + derived `views[]` | **In progress** — config layer done (types / lift / merge / seed)      |
 
 ### Immediate coding focus
 
 ```text
-C4.1b — vertex modify / clear on /map (after create-first C4.1a)
-  reuse: patchGeometry + MapToolMode modify/clear + OL Modify
-  after: invalidate map load; keep appUi.focusedId + levelId
+N13 — config entities slim-up (no painter registry)
+  DONE: types v2 (GraphNodeOverlay / MapLayerOverlay / ProductView / ResolvedGraphNode)
+  DONE: overlay-io liftOverlayV1toV2 + overlayV2toV1 (editor bridge) + soft-parse both shapes
+  DONE: merge() emits version 2 + ResolvedEntity.views + graph.nodes (+ denorm graph/map)
+  DONE: seed 99-app_config v2 + save/load v2 + tests + NONE/undefined semantics fixed
+  REMAINS: consumer call sites (to-graph / graph-crud / map-crud / query-graph-bundle /
+           table picker) read graph.nodes / views; ConfigEditor v2 IA (node/layer tabs)
+  NOTE: per-table structured layout still TODO — layoutOptions (raw) wired end-to-end
 
-N13 — config entities slim-up (after C4.1b; no painter registry)
-  overlay: entities = identity+table; graph.nodes; map.layers; graph.edges
-  merge: derive ResolvedEntity.views; lift v1 nested graph/map on read
-  graph.nodes[table].layout / layoutOptions → per-table ELK merge in to-elk
-  seed + ConfigEditor + consumer call sites (to-graph, table picker)
+Optional (any time, not blocking N13):
+C4.1d — clear geometry on focused feature
+  reuse: patchGeometry + pending modify save/retry UX; keep focusedId + levelId
 ```
 
-**Shipped write seams:** table + graph wires/nodes + map **assign**. VIEWER is read-only
-(`assertCanEdit` / `assertCanUpdate`). Add-row always uses a validation modal. Record FKs
-use the registered `combobox` editor (inline + form) with Command groups when the target
-display recipe is multi-part.
+**Shipped write seams:** table + graph wires/nodes + map **assign / draw / vertex edit / extrude**.
+VIEWER is read-only (`assertCanEdit` / `assertCanUpdate`). Add-row always uses a validation
+modal. Record FKs use the registered `combobox` editor (inline + form) with Command groups
+when the target display recipe is multi-part. Map geometry edits commit via `updateGeometry`
+(`patchGeometry`); successful vertex/extrude saves keep the live OL feature (no full reload).
 
 **C4 split**
 
-| Slice            | UX                                        | Persist                                      |
-| ---------------- | ----------------------------------------- | -------------------------------------------- |
-| C4.0 assign      | Pick static feature + DB row              | `patchGeometry` (+ optional level)           |
-| C4.0b floor plan | `levels.geometry` linework under features | seed / sync from `static/geo/*/base.geojson` |
-| C4.1a create     | Draw polygon → modal → new row            | `createRecord` + geometry                    |
-| C4.1b modify     | Vertex drag / clear on focused feature    | `patchGeometry`                              |
+| Slice            | UX                                                | Persist                                      |
+| ---------------- | ------------------------------------------------- | -------------------------------------------- |
+| C4.0 assign      | Pick static feature + DB row                      | `patchGeometry` (+ optional level)           |
+| C4.0b floor plan | `levels.geometry` linework under features         | seed / sync from `static/geo/*/base.geojson` |
+| C4.1a create     | Draw polygon → modal → new row or existing record | `createRecord` / assign geom + geometry      |
+| C4.1b modify     | Vertex drag / insert / Alt-remove + CAD snap      | `patchGeometry` via `updateGeometry`         |
+| C4.1c extrude    | Edge push/pull along normal + depth snap          | same as C4.1b                                |
+| C4.1d clear      | Clear geom on focused feature (optional)          | `patchGeometry` null/empty                   |
 
 ### CRUD design (toward C0–C4)
 
@@ -755,17 +763,22 @@ src/lib/server/data/mutate.ts
   `geometryKey` fingerprint against DB rows; optional hide-assigned; record list via fuzzy search remote.
 - **C4.0b:** `levels.geometry` as MultiLine floor plan; map layers may omit `levelField`
   (self-level = row id). Style registry + OL render line geometries.
-- **C4.1a done:** draw polygon on `/map` → create modal (name/level) → `createFeature`; tool modes + map-crud meta prepared for modify
-- **C4.1b next:** metric XY vertex edit / clear on focused feature; write via `patchGeometry`
+- **C4.1a done:** draw polygon on `/map` (DrawSnapSession: feature snap, Shift ortho, alignment
+  guides) → modal → `createFeature` **or** attach geom to an existing gap record; FeaturePropertiesPanel for scalars/FKs.
+- **C4.1b done:** Edit tool — ModifyVertexSession (drag / edge-insert / Alt-remove corners),
+  shared MapSnapAssist, `updateGeometry` + pending save/retry/revert; vertex handles on focus.
+- **C4.1c done:** Extrude tool — ModifyExtrudeSession (edge normal push/pull + parallel depth snap),
+  same ModifyCommit / pending UX as vertex edit.
+- **C4.1d optional:** clear-geometry + draw-point still in `MAP_FUTURE_TOOLS` (UI placeholders only).
 - Level stays filter only unless moving feature across levels explicitly
 
 **Roles (current)**
 
-| Role   | Read | Table | Graph | Map assign | Map draw (C4.1a) | Map modify (C4.1b) | Overlay |
-| ------ | ---- | ----- | ----- | ---------- | ---------------- | ------------------ | ------- |
-| VIEWER | ✓    | —     | —     | —          | —                | —                  | —       |
-| EDITOR | ✓    | ✓     | ✓     | ✓          | ✓                | planned            | —       |
-| OWNER  | ✓    | ✓     | ✓     | ✓          | ✓                | planned            | ✓       |
+| Role   | Read | Table | Graph | Map assign | Map draw | Map edit (modify/extrude) | Overlay |
+| ------ | ---- | ----- | ----- | ---------- | -------- | ------------------------- | ------- |
+| VIEWER | ✓    | —     | —     | —          | —        | —                         | —       |
+| EDITOR | ✓    | ✓     | ✓     | ✓          | ✓        | ✓                         | —       |
+| OWNER  | ✓    | ✓     | ✓     | ✓          | ✓        | ✓                         | ✓       |
 
 **Out of scope for first CRUD slice** (historical — mostly cleared)
 
@@ -836,8 +849,8 @@ App env (`SURREAL_URL`, WS) and kit env (`SURREALDB_HOST`, HTTP) may differ by p
 5. Surreal permissions: ensure EDITOR can MERGE/CREATE/DELETE / RELATE on domain tables
 6. Composite FK sort keys (`sortKey` from display parts) when SVAR needs header multi-key
 7. Record `sort` default (config string) is client-side only — confirm SVAR header marks match on table reopen
-8. C4.1b: OL Modify interaction, clear-geometry, cross-level move policy; optional attach-drawn-geom to existing gap records
-9. Seed or sync pipeline: collapse `static/geo/*/base.geojson` → `levels.geometry`
+8. C4.1d: clear-geometry tool (and optional draw-point); cross-level move policy if features should change `level` while editing
+9. Seed or sync pipeline: collapse `static/geo/*/base.geojson` → `levels.geometry` (static bases removed from tree after C4.0b seed path — restore only if re-sync needed)
 10. N13: keep optional denorm `entity.graph` / `entity.map` during consumer migration, or jump straight to `graph.nodes` + `map.layers` only
 11. N13: ConfigEditor IA — entity tab vs graph tab vs map layers tab
 12. N13: how much per-table ELK UI (structured layout only vs raw layoutOptions editor)

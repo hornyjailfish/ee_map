@@ -1,8 +1,10 @@
 /**
  * Soft I/O helpers for AppConfigOverlay.
  *
- * Shape is intentionally loose while the overlay contract is still evolving:
- * - Require / default `version: 1`
+ * Shape is intentionally loose while the overlay contract moves v1 → v2 (N13):
+ * - Accept both v1 (nested `entities.*.graph/map`, top-level `edges`) and v2
+ *   (`graph.nodes`, `map.layers`, `graph.edges`), lifting v1 → v2 on read
+ * - `version: 2` is the written contract; v1 input is migrated transparently
  * - Keep known top-level buckets when they are plain objects / arrays
  * - Do **not** deep-reject unknown nested keys (pass-through for future fields)
  * - Soft-fail only on non-JSON / non-object roots
@@ -13,8 +15,15 @@ import type { AppConfigOverlay, EntityOverlay } from './types';
 
 export const OVERLAY_DOC_ID = 'app_config:main';
 
+/** Current written overlay contract version. */
+export const OVERLAY_VERSION = 2 as const;
+
 const sortKeySchema = z.object({ field: z.string(), dir: z.enum(['asc', 'desc']).optional() });
-const sortSchema = z.union([z.string(), sortKeySchema, z.array(z.union([z.string(), sortKeySchema]))]);
+const sortSchema = z.union([
+	z.string(),
+	sortKeySchema,
+	z.array(z.union([z.string(), sortKeySchema]))
+]);
 
 /** Drop non-string entries while keeping the array contract. */
 const stringListSchema = z
@@ -37,7 +46,7 @@ const BUCKET_MESSAGES: Record<(typeof BUCKET_KEYS)[number], string> = {
  */
 const overlaySchema = z
 	.object({
-		version: z.union([z.literal(1), z.literal('1')]).optional(),
+		version: z.union([z.literal(1), z.literal(2), z.literal('1'), z.literal('2')]).optional(),
 		excludeTables: stringListSchema.optional(),
 		entities: z.record(z.string(), z.unknown()).optional(),
 		edges: z.record(z.string(), z.unknown()).optional(),
@@ -46,14 +55,14 @@ const overlaySchema = z
 		search: z.record(z.string(), z.unknown()).optional()
 	})
 	.passthrough()
-	.transform(({ id: _id, version: _version, ...rest }) => ({ version: 1 as const, ...rest }));
+	.transform(({ id: _id, version: _version, ...rest }) => rest);
 
 export type OverlayParseResult =
 	{ ok: true; overlay: AppConfigOverlay } | { ok: false; message: string };
 
 /** Empty starter document for a missing overlay row. */
 export function emptyOverlay(): AppConfigOverlay {
-	return { version: 1 };
+	return { version: OVERLAY_VERSION };
 }
 
 /** Deep clone suitable for editor local state. Never returns null/undefined. */
@@ -116,10 +125,148 @@ export function softParseOverlay(raw: unknown): OverlayParseResult {
 
 	const parsed = overlaySchema.safeParse(compactOverlay(raw as Record<string, unknown>));
 	if (!parsed.success) {
-		return { ok: false, message: overlayErrorMessage(raw as Record<string, unknown>, parsed.error) };
+		return {
+			ok: false,
+			message: overlayErrorMessage(raw as Record<string, unknown>, parsed.error)
+		};
 	}
 
-	return { ok: true, overlay: parsed.data as AppConfigOverlay };
+	// Migrate v1 → v2 transparently: nested entities.*.graph/map + top-level edges
+	// become graph.nodes / map.layers / graph.edges; version normalizes to 2.
+	return { ok: true, overlay: liftOverlayV1toV2(parsed.data as Record<string, unknown>) };
+}
+
+/**
+ * Pure v1 → v2 overlay migration (idempotent for already-v2 overlays).
+ * - `entities[t].graph` → `graph.nodes[t]` (drops `role: 'ignore'`)
+ * - `entities[t].map` (enabled) → `map.layers[t]` (drops `enabled`, presence = active)
+ * - top-level `edges` → `graph.edges`
+ * - strips nested `graph` / `map` from entities; version → 2
+ */
+export function liftOverlayV1toV2(raw: Record<string, unknown>): AppConfigOverlay {
+	// Spread first so unknown top-level keys (and unknown nested entity keys) pass through.
+	const overlay: Record<string, unknown> = { ...raw };
+	overlay.version = OVERLAY_VERSION;
+	delete overlay.id;
+
+	const graphRaw = isPlainObject(raw.graph) ? raw.graph : {};
+	const mapRaw = isPlainObject(raw.map) ? raw.map : {};
+
+	// Seed v2 indexes from v2 locations first, so the lift is idempotent.
+	const nodes: Record<string, unknown> = isPlainObject(graphRaw.nodes) ? { ...graphRaw.nodes } : {};
+	const edges: Record<string, unknown> = isPlainObject(graphRaw.edges) ? { ...graphRaw.edges } : {};
+	const layers: Record<string, unknown> = isPlainObject(mapRaw.layers) ? { ...mapRaw.layers } : {};
+
+	// v1: top-level edges → graph.edges
+	if (isPlainObject(raw.edges)) Object.assign(edges, raw.edges);
+	delete overlay.edges;
+
+	// v1: entities.*.graph / map lifted out; entities slim down.
+	if (isPlainObject(raw.entities)) {
+		const entities: Record<string, unknown> = {};
+		for (const [table, entryRaw] of Object.entries(raw.entities)) {
+			if (!isPlainObject(entryRaw)) {
+				entities[table] = entryRaw;
+				continue;
+			}
+			const entry: Record<string, unknown> = { ...entryRaw };
+
+			if (isPlainObject(entry.graph)) {
+				const g = entry.graph as Record<string, unknown>;
+				if (g.role !== 'ignore' && typeof g.role === 'string') {
+					nodes[table] = { ...g };
+				}
+			}
+
+			if (isPlainObject(entry.map)) {
+				const m = entry.map as Record<string, unknown>;
+				if (m.enabled === true) {
+					const { enabled: _enabled, ...layer } = m;
+					layers[table] = layer;
+				}
+			}
+
+			delete entry.graph;
+			delete entry.map;
+			entities[table] = entry;
+		}
+		overlay.entities = entities as AppConfigOverlay['entities'];
+	}
+
+	const graph: Record<string, unknown> = {};
+	if (isPlainObject(graphRaw.layout)) graph.layout = graphRaw.layout;
+	if (Object.keys(nodes).length > 0) graph.nodes = nodes;
+	if (Object.keys(edges).length > 0) graph.edges = edges;
+	if (Object.keys(graph).length > 0) overlay.graph = graph;
+	else delete overlay.graph;
+
+	if (isPlainObject(raw.map)) {
+		const mapOut: Record<string, unknown> = { ...mapRaw };
+		delete mapOut.layers;
+		if (Object.keys(layers).length > 0) mapOut.layers = layers;
+		if (Object.keys(mapOut).length > 0) overlay.map = mapOut;
+		else delete overlay.map;
+	} else if (Object.keys(layers).length > 0) {
+		overlay.map = { layers };
+	}
+
+	if (!isPlainObject(raw.search)) delete overlay.search;
+
+	return overlay as AppConfigOverlay;
+}
+
+/**
+ * Inverse of {@link liftOverlayV1toV2} for the OWNER editor (transitional bridge).
+ * The editor still edits the nested v1 shape (`entities.*.graph/map`, top-level
+ * `edges`); its output is lifted back to v2 on save. Purely structural — unknown
+ * keys and `layoutOptions` pass through so nothing is lost on a round-trip.
+ */
+export function overlayV2toV1(raw: AppConfigOverlay): AppConfigOverlay {
+	const overlay: Record<string, unknown> = { ...(raw as Record<string, unknown>) };
+	overlay.version = 1;
+
+	const entities: Record<string, unknown> = isPlainObject(raw.entities)
+		? { ...(raw.entities as Record<string, unknown>) }
+		: {};
+
+	const nodes = isPlainObject(raw.graph?.nodes) ? raw.graph.nodes : {};
+	for (const [table, nodeRaw] of Object.entries(nodes)) {
+		const entry: Record<string, unknown> = isPlainObject(entities[table])
+			? (entities[table] as Record<string, unknown>)
+			: {};
+		entry.graph = { ...(nodeRaw as Record<string, unknown>) };
+		entities[table] = entry;
+	}
+
+	const layers = isPlainObject(raw.map?.layers) ? raw.map.layers : {};
+	for (const [table, layerRaw] of Object.entries(layers)) {
+		const entry: Record<string, unknown> = isPlainObject(entities[table])
+			? (entities[table] as Record<string, unknown>)
+			: {};
+		entry.map = { enabled: true, ...(layerRaw as Record<string, unknown>) };
+		entities[table] = entry;
+	}
+	if (Object.keys(entities).length > 0) overlay.entities = entities as AppConfigOverlay['entities'];
+
+	if (isPlainObject(raw.graph?.layout)) {
+		overlay.graph = { layout: raw.graph.layout as Record<string, unknown> };
+	} else {
+		delete overlay.graph;
+	}
+
+	if (isPlainObject(raw.graph?.edges)) {
+		overlay.edges = raw.graph.edges as AppConfigOverlay['edges'];
+	} else {
+		delete overlay.edges;
+	}
+
+	if (isPlainObject(raw.map)) {
+		const mapOut: Record<string, unknown> = { ...raw.map };
+		delete mapOut.layers;
+		overlay.map = mapOut;
+	}
+
+	return overlay as AppConfigOverlay;
 }
 
 /** Drop nullish known keys so `.optional()` stays strict but lenient. */

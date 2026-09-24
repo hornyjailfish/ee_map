@@ -87,10 +87,10 @@ describe('writableFields', () => {
 });
 
 describe('coerceScalar', () => {
-	it('returns null for empty/null optional fields, throws for required', () => {
-		expect(coerceScalar(field('d', { optional: true }), '')).toBeNull();
-		expect(coerceScalar(field('d', { optional: true }), null)).toBeNull();
-		expect(coerceScalar(field('d', { optional: true }), undefined)).toBeNull();
+	it('returns undefined (NONE) for empty/null optional fields, throws for required', () => {
+		expect(coerceScalar(field('d', { optional: true }), '')).toBeUndefined();
+		expect(coerceScalar(field('d', { optional: true }), null)).toBeUndefined();
+		expect(coerceScalar(field('d', { optional: true }), undefined)).toBeUndefined();
 		expect(() => coerceScalar(field('n'), '')).toThrow(/required/);
 		expect(() => coerceScalar(field('n'), null)).toThrow(/required/);
 	});
@@ -157,7 +157,7 @@ describe('coercePatch', () => {
 		};
 		expect(fromStr.geometry.toJSON()).toEqual(poly);
 
-		expect(coercePatch(e, { geometry: '' })).toEqual({ geometry: null });
+		expect(coercePatch(e, { geometry: '' })).toEqual({ geometry: undefined });
 	});
 });
 

@@ -7,7 +7,7 @@
 
 import { RecordId, type Surreal } from 'surrealdb';
 import type { AppConfigOverlay } from '$lib/config/types';
-import { softParseOverlay } from '$lib/config/overlay-io';
+import { OVERLAY_VERSION, softParseOverlay } from '$lib/config/overlay-io';
 import type { AppRole } from '$lib/catalog-types';
 import { MutateError, assertCanOwn } from '$lib/server/data/mutate';
 import { normalizeOverlay } from './load-overlay';
@@ -54,7 +54,7 @@ export async function saveOverlay(
 
 /** Strip non-content fields before CONTENT write. */
 function toWritableContent(overlay: AppConfigOverlay): Record<string, unknown> {
-	const content: Record<string, unknown> = { ...overlay, version: 1 };
+	const content: Record<string, unknown> = { ...overlay, version: OVERLAY_VERSION };
 	delete content.id;
 	return content;
 }

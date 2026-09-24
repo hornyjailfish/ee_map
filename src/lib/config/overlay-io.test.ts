@@ -10,8 +10,8 @@ import {
 } from './overlay-io';
 
 describe('overlay-io', () => {
-	it('emptyOverlay starts at version 1', () => {
-		expect(emptyOverlay()).toEqual({ version: 1 });
+	it('emptyOverlay starts at version 2', () => {
+		expect(emptyOverlay()).toEqual({ version: 2 });
 	});
 
 	it('soft-parses known buckets and preserves unknown nested keys', () => {
@@ -31,19 +31,22 @@ describe('overlay-io', () => {
 
 		expect(result.ok).toBe(true);
 		if (!result.ok) return;
-		expect(result.overlay.version).toBe(1);
+		expect(result.overlay.version).toBe(2);
 		expect(result.overlay.excludeTables).toEqual(['embeddings']);
 		expect(result.overlay.entities?.boards).toMatchObject({
 			label: 'Boards',
-			futureKnob: true,
-			graph: { role: 'board', parentField: 'room' }
+			futureKnob: true
+		});
+		expect(result.overlay.graph?.nodes?.boards).toEqual({
+			role: 'board',
+			parentField: 'room'
 		});
 		expect((result.overlay as Record<string, unknown>).customTop).toEqual({ keep: 1 });
 		expect((result.overlay as Record<string, unknown>).id).toBeUndefined();
 	});
 
 	it('rejects unsupported version and non-objects', () => {
-		expect(softParseOverlay({ version: 2 }).ok).toBe(false);
+		expect(softParseOverlay({ version: 3 }).ok).toBe(false);
 		expect(softParseOverlay(42).ok).toBe(false);
 		expect(parseOverlayJson('{').ok).toBe(false);
 	});
@@ -52,10 +55,7 @@ describe('overlay-io', () => {
 		expect(parseStringList('a, b\nc')).toEqual(['a', 'b', 'c']);
 		expect(parseSortText('name')).toBe('name');
 		expect(parseSortText('name desc')).toEqual({ field: 'name', dir: 'desc' });
-		expect(parseSortText('room\nname desc')).toEqual([
-			'room',
-			{ field: 'name', dir: 'desc' }
-		]);
+		expect(parseSortText('room\nname desc')).toEqual(['room', { field: 'name', dir: 'desc' }]);
 		expect(formatSortText([{ field: 'room' }, { field: 'name', dir: 'desc' }])).toBe(
 			'room\nname desc'
 		);

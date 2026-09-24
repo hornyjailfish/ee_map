@@ -7,21 +7,25 @@ import type {
 	EntityDisplayOverlay,
 	EntityOverlay,
 	FieldOverlay,
+	GraphNodeOverlay,
 	GraphOverlay,
+	MapLayerOverlay,
+	ProductView,
 	ResolvedConfig,
 	ResolvedEdge,
 	ResolvedEntity,
 	ResolvedEntityDisplay,
-	ResolvedEntityGraph,
 	ResolvedEntityMap,
 	ResolvedField,
 	ResolvedGraphLayout,
+	ResolvedGraphNode,
 	ResolvedMapLayer,
 	ResolvedSearch,
 	ResolvedTableSortKey,
 	TablePermissions,
 	TableSortKeyOverlay
 } from './types';
+import { liftOverlayV1toV2 } from './overlay-io';
 
 const DEFAULT_HIERARCHY = ['room', 'board', 'breaker', 'output', 'group'] as const;
 const SYSTEM_TABLE = /^__/;
@@ -59,7 +63,8 @@ export const DEFAULT_GRAPH_LAYOUT: ResolvedGraphLayout = {
  * Pure — no I/O.
  */
 export function merge(auto: AutoProfile, overlay?: AppConfigOverlay | null): ResolvedConfig {
-	const ov = overlay ?? undefined;
+	// Migrate v1 overlays (nested entities.*.graph/map, top-level edges) in place.
+	const ov = overlay ? liftOverlayV1toV2(overlay as unknown as Record<string, unknown>) : undefined;
 	const exclude = new Set(ov?.excludeTables ?? []);
 	const diagnostics: Diagnostic[] = [];
 
@@ -96,8 +101,13 @@ export function merge(auto: AutoProfile, overlay?: AppConfigOverlay | null): Res
 		return a.message.localeCompare(b.message);
 	});
 
+	const graphNodes: Record<string, ResolvedGraphNode> = {};
+	for (const entity of tables) {
+		if (entity.graph) graphNodes[entity.name] = entity.graph as ResolvedGraphNode;
+	}
+
 	const config: ResolvedConfig = {
-		version: 1,
+		version: 2,
 		tables,
 		relations,
 		map: {
@@ -112,7 +122,8 @@ export function merge(auto: AutoProfile, overlay?: AppConfigOverlay | null): Res
 		search,
 		graph: {
 			hierarchy: [...DEFAULT_HIERARCHY],
-			layout: resolveGraphLayout(ov?.graph)
+			layout: resolveGraphLayout(ov?.graph),
+			nodes: graphNodes
 		},
 		diagnostics
 	};
@@ -126,27 +137,35 @@ function resolveEntity(
 	diagnostics: Diagnostic[]
 ): ResolvedEntity {
 	const entityOv = overlay?.entities?.[table.name];
+	const graphOv = overlay?.graph?.nodes?.[table.name];
+	const mapOv = overlay?.map?.layers?.[table.name];
 	const fieldNames = new Set(table.fields.map((f) => f.name));
+
+	const graphNode = graphOv
+		? resolveGraph(graphOv, table.name, fieldNames, diagnostics)
+		: undefined;
+	const mapNode = mapOv ? resolveEntityMap(mapOv, table.fields) : undefined;
+
+	const views: ProductView[] = ['table'];
+	if (graphNode) views.push('graph');
+	if (mapNode) views.push('map');
+
 	const entity: ResolvedEntity = {
 		name: table.name,
 		label: entityOv?.label ?? table.name,
 		fields: resolveFields(table, entityOv?.table, diagnostics),
-		permissions: normalizePermissions(table.permissions)
+		permissions: normalizePermissions(table.permissions),
+		views
 	};
 
-	const display = resolveEntityDisplay(table, entityOv, fieldNames, diagnostics);
+	const display = resolveEntityDisplay(table, entityOv, graphOv, fieldNames, diagnostics);
 	if (display) entity.display = display;
 
 	const sort = resolveEntitySort(table.name, entityOv?.table?.sort, fieldNames, diagnostics);
 	if (sort) entity.sort = sort;
 
-	if (entityOv?.graph) {
-		entity.graph = resolveGraph(entityOv.graph, table.name, fieldNames, diagnostics);
-	}
-
-	if (entityOv?.map) {
-		entity.map = resolveEntityMap(entityOv.map, table.fields);
-	}
+	if (graphNode) entity.graph = graphNode;
+	if (mapNode) entity.map = mapNode;
 
 	return entity;
 }
@@ -225,6 +244,7 @@ function normalizeSortOverlay(
 function resolveEntityDisplay(
 	table: AutoProfileTable,
 	overlay: EntityOverlay | undefined,
+	graphOv: GraphNodeOverlay | undefined,
 	fieldNames: Set<string>,
 	diagnostics: Diagnostic[]
 ): ResolvedEntityDisplay | undefined {
@@ -237,7 +257,7 @@ function resolveEntityDisplay(
 		);
 	}
 
-	const graphLabel = overlay?.graph?.labelField;
+	const graphLabel = graphOv?.labelField;
 	if (graphLabel) {
 		return { parts: [{ path: graphLabel }], sep: DEFAULT_DISPLAY_SEP };
 	}
@@ -318,12 +338,12 @@ function validateDisplayPathRoot(
 }
 
 function resolveGraph(
-	graphOv: NonNullable<EntityOverlay['graph']>,
+	graphOv: GraphNodeOverlay,
 	tableName: string,
 	fieldNames: Set<string>,
 	diagnostics: Diagnostic[]
-): ResolvedEntityGraph {
-	const graph: ResolvedEntityGraph = { role: graphOv.role };
+): ResolvedGraphNode {
+	const graph: ResolvedGraphNode = { role: graphOv.role };
 
 	if (graphOv.parentField !== undefined) {
 		graph.parentField = graphOv.parentField;
@@ -360,18 +380,20 @@ function resolveGraph(
 		}
 	}
 
+	if (graphOv.layoutOptions && Object.keys(graphOv.layoutOptions).length > 0) {
+		graph.layoutOptions = { ...graphOv.layoutOptions };
+	}
+
 	return graph;
 }
 
-function resolveEntityMap(
-	mapOv: NonNullable<EntityOverlay['map']>,
-	fields: AutoProfileField[]
-): ResolvedEntityMap {
+function resolveEntityMap(mapOv: MapLayerOverlay, fields: AutoProfileField[]): ResolvedEntityMap {
 	const levelHeuristic = fields.find((f) => f.name === 'level' && f.type === 'record');
 	const geometryHeuristic = fields.find((f) => f.type === 'geometry');
 
+	// Presence of a `map.layers[key]` entry is membership.
 	const map: ResolvedEntityMap = {
-		enabled: mapOv.enabled ?? false
+		enabled: true
 	};
 
 	const levelField = mapOv.levelField ?? levelHeuristic?.name;
@@ -425,7 +447,7 @@ function buildMapLayers(tables: ResolvedEntity[], diagnostics: Diagnostic[]): Re
 }
 
 function resolveEdge(table: AutoProfileTable, overlay: AppConfigOverlay | undefined): ResolvedEdge {
-	const edgeOv = overlay?.edges?.[table.name];
+	const edgeOv = overlay?.graph?.edges?.[table.name];
 	const edge: ResolvedEdge = {
 		name: table.name,
 		role: edgeOv?.role ?? 'other',
@@ -597,8 +619,8 @@ function collectOrphanOverlays(
 		}
 	}
 
-	if (overlay.edges) {
-		for (const name of Object.keys(overlay.edges)) {
+	if (overlay.graph?.edges) {
+		for (const name of Object.keys(overlay.graph.edges)) {
 			const autoTable = autoByName.get(name);
 			if (
 				autoTable &&
@@ -613,6 +635,46 @@ function collectOrphanOverlays(
 				level: 'warn',
 				code: 'orphan_edge_overlay',
 				message: `Edge overlay '${name}' has no matching relation table`
+			});
+		}
+	}
+
+	if (overlay.graph?.nodes) {
+		for (const name of Object.keys(overlay.graph.nodes)) {
+			const autoTable = autoByName.get(name);
+			if (
+				autoTable &&
+				autoTable.kind !== 'relation' &&
+				!SYSTEM_TABLE.test(name) &&
+				!exclude.has(name)
+			) {
+				continue;
+			}
+
+			diagnostics.push({
+				level: 'warn',
+				code: 'orphan_graph_node_overlay',
+				message: `Graph node overlay '${name}' has no matching entity table`
+			});
+		}
+	}
+
+	if (overlay.map?.layers) {
+		for (const name of Object.keys(overlay.map.layers)) {
+			const autoTable = autoByName.get(name);
+			if (
+				autoTable &&
+				autoTable.kind !== 'relation' &&
+				!SYSTEM_TABLE.test(name) &&
+				!exclude.has(name)
+			) {
+				continue;
+			}
+
+			diagnostics.push({
+				level: 'warn',
+				code: 'orphan_map_layer_overlay',
+				message: `Map layer overlay '${name}' has no matching entity table`
 			});
 		}
 	}

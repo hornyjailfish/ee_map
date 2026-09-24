@@ -240,7 +240,8 @@ describe('EE app_config seed → merge', () => {
 			parentField: 'board',
 			subtitleField: 'description'
 		});
-		expect(config.tables.find((t) => t.name === 'rents')?.graph?.role).toBe('ignore');
+		expect(config.tables.find((t) => t.name === 'rents')?.graph).toBeUndefined();
+		expect(config.graph.nodes?.rents).toBeUndefined();
 		expect(config.relations[0]).toMatchObject({
 			name: 'connects',
 			role: 'feeds',

@@ -5,6 +5,7 @@
 
 import { RecordId, type Surreal } from 'surrealdb';
 import type { AppConfigOverlay } from '$lib/config/types';
+import { liftOverlayV1toV2 } from '$lib/config/overlay-io';
 
 const OVERLAY_TABLE = 'app_config';
 const OVERLAY_ID = 'main';
@@ -46,48 +47,22 @@ export function normalizeOverlay(raw: unknown): AppConfigOverlay | null {
 
 	const row = raw as Record<string, unknown>;
 
-	// version is required by contract; default to 1 if present-ish overlay fields exist
+	// version is required by contract; default to 2 if present-ish overlay fields exist
 	const version = row.version;
 	const hasOverlayShape =
 		version === 1 ||
 		version === '1' ||
+		version === 2 ||
+		version === '2' ||
 		row.entities != null ||
 		row.edges != null ||
+		row.graph != null ||
 		row.map != null ||
 		row.search != null ||
 		row.excludeTables != null;
 
 	if (!hasOverlayShape) return null;
 
-	const overlay: AppConfigOverlay = { version: 1 };
-
-	if (Array.isArray(row.excludeTables)) {
-		overlay.excludeTables = row.excludeTables.filter((t): t is string => typeof t === 'string');
-	}
-
-	if (isPlainObject(row.entities)) {
-		overlay.entities = row.entities as AppConfigOverlay['entities'];
-	}
-
-	if (isPlainObject(row.edges)) {
-		overlay.edges = row.edges as AppConfigOverlay['edges'];
-	}
-
-	if (isPlainObject(row.graph)) {
-		overlay.graph = row.graph as AppConfigOverlay['graph'];
-	}
-
-	if (isPlainObject(row.map)) {
-		overlay.map = row.map as AppConfigOverlay['map'];
-	}
-
-	if (isPlainObject(row.search)) {
-		overlay.search = row.search as AppConfigOverlay['search'];
-	}
-
-	return overlay;
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-	return value !== null && typeof value === 'object' && !Array.isArray(value);
+	// v1 rows are migrated to v2 in place (nested graph/map/edges lifted).
+	return liftOverlayV1toV2(row);
 }

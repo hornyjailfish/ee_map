@@ -73,7 +73,7 @@ describe('resolve composition (merge path used by resolveAppConfig)', () => {
 
 		const config = merge(auto, overlay);
 
-		expect(config.version).toBe(1);
+		expect(config.version).toBe(2);
 		expect(config.tables.map((t) => t.name)).toEqual(['electric_rooms']);
 		expect(config.relations[0]).toMatchObject({
 			name: 'connects',

@@ -32,10 +32,10 @@ describe('normalizeOverlay', () => {
 		});
 
 		expect(overlay).toEqual({
-			version: 1,
+			version: 2,
 			excludeTables: ['embeddings', 'app_config'],
 			entities: {
-				breakers: { graph: { role: 'breaker', parentField: 'board' } },
+				breakers: {},
 				boards: {
 					display: {
 						parts: [{ path: 'room.name' }, { path: 'name' }],
@@ -43,10 +43,11 @@ describe('normalizeOverlay', () => {
 					}
 				}
 			},
-			edges: {
-				connects: { role: 'feeds' }
+			graph: {
+				layout: { direction: 'DOWN' },
+				nodes: { breakers: { role: 'breaker', parentField: 'board' } },
+				edges: { connects: { role: 'feeds' } }
 			},
-			graph: { layout: { direction: 'DOWN' } },
 			map: { units: 'm', plane: 'xy-meters' },
 			search: { fieldsByTable: { breakers: ['name'] } }
 		});
@@ -54,7 +55,7 @@ describe('normalizeOverlay', () => {
 
 	it('unwraps single-element SELECT arrays', () => {
 		const overlay = normalizeOverlay([{ version: 1, excludeTables: ['x'] }]);
-		expect(overlay).toEqual({ version: 1, excludeTables: ['x'] });
+		expect(overlay).toEqual({ version: 2, excludeTables: ['x'] });
 	});
 
 	it('infers overlay when version missing but map present', () => {
@@ -62,7 +63,7 @@ describe('normalizeOverlay', () => {
 			map: { units: 'm', plane: 'xy-meters' }
 		});
 		expect(overlay).toEqual({
-			version: 1,
+			version: 2,
 			map: { units: 'm', plane: 'xy-meters' }
 		});
 	});

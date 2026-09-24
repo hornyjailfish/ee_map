@@ -35,15 +35,19 @@ export type FieldTypeName = string;
 // DB table is SCHEMALESS (view_configs.surql); seed uses INSERT IGNORE.
 
 export type AppConfigOverlay = {
-	version: 1;
+	version: 1 | 2;
 	/** Table names skipped entirely (in addition to /^__/ system tables). */
 	excludeTables?: string[];
-	/** key = table name */
+	/** key = table name — identity + grid presentation only (slim in v2). */
 	entities?: Record<string, EntityOverlay>;
-	/** key = relation table name */
+	/**
+	 * @deprecated v1 location for relation settings. Migrated to `graph.edges` on read.
+	 * key = relation table name
+	 */
 	edges?: Record<string, EdgeOverlay>;
-	/** Graph view layout (ELK) + hierarchy is fixed by merge defaults. */
+	/** Hierarchy is fixed by merge defaults; nodes/edges/layout are v2 graph knobs. */
 	graph?: GraphOverlay;
+	/** Map globals + per-table layers (`map.layers`). */
 	map?: MapOverlay;
 	search?: SearchOverlay;
 };
@@ -62,11 +66,18 @@ export type EntityDisplayOverlay = {
 	sep?: string;
 };
 
+/**
+ * Entity overlay — identity + grid presentation.
+ * In v2, graph / map participation lives on `graph.nodes.<table>` and
+ * `map.layers.<table>`; the nested `graph` / `map` keys below are deprecated
+ * v1 input that `liftOverlayV1toV2` migrates on read.
+ */
 export type EntityOverlay = {
 	/** Display label for the entity (defaults to table name). */
 	label?: string;
 	/** Canonical label recipe when this entity is referenced. */
 	display?: EntityDisplayOverlay;
+	/** @deprecated v1 graph knobs — migrated to `graph.nodes.<table>`. */
 	graph?: {
 		role: GraphRole;
 		parentField?: string;
@@ -75,6 +86,7 @@ export type EntityOverlay = {
 		labelField?: string;
 		subtitleField?: string;
 	};
+	/** @deprecated v1 map knobs — migrated to `map.layers.<table>`. */
 	map?: {
 		/** Geometry layers are only active when explicitly enabled. */
 		enabled?: boolean;
@@ -144,6 +156,8 @@ export type MapOverlay = {
 		byLevelField?: string;
 		imageExtentField?: string;
 	};
+	/** Per-table layer knobs (v2). Presence of a key is map membership. */
+	layers?: Record<string, MapLayerOverlay>;
 };
 
 export type SearchOverlay = {
@@ -181,7 +195,30 @@ export type GraphCompoundPaddingOverlay = {
 	right?: number;
 };
 
-/** Sparse graph presentation / layout deltas on app_config. */
+/** Per-table graph node knobs under `graph.nodes.<table>` (v2). Presence = membership. */
+export type GraphNodeOverlay = {
+	/** Real roles only — `ignore` is expressed by omitting the table. */
+	role: Exclude<GraphRole, 'ignore'>;
+	parentField?: string;
+	/** Client registry key for Svelte Flow node type. */
+	nodeType?: string;
+	labelField?: string;
+	subtitleField?: string;
+	/** Raw ELK string overrides for nodes of this table (win over global + structured). */
+	layoutOptions?: Record<string, string>;
+};
+
+/** Per-table map layer knobs under `map.layers.<table>` (v2). Presence = enabled. */
+export type MapLayerOverlay = {
+	levelField?: string;
+	geometryField?: string;
+	layerGroup?: string;
+	/** Client registry key for OpenLayers style factory. */
+	styleKey?: string;
+	zIndex?: number;
+};
+
+/** Sparse graph presentation / layout deltas on app_config (v2). */
 export type GraphOverlay = {
 	layout?: {
 		direction?: GraphLayoutDirection;
@@ -189,6 +226,10 @@ export type GraphOverlay = {
 		spacing?: GraphLayoutSpacingOverlay;
 		compoundPadding?: GraphCompoundPaddingOverlay;
 	};
+	/** key = table name. */
+	nodes?: Record<string, GraphNodeOverlay>;
+	/** key = relation table name. */
+	edges?: Record<string, EdgeOverlay>;
 };
 
 // ─── Surreal engine (introspect dialect / future compat) ─────────────────────
@@ -300,6 +341,20 @@ export type ResolvedEntityGraph = {
 	subtitleField?: string;
 };
 
+/** Product views a table can participate in (derived at merge, not stored in overlay). */
+export type ProductView = 'table' | 'graph' | 'map';
+
+/** Resolved per-table graph node (from `graph.nodes.<table>`). Real roles only. */
+export type ResolvedGraphNode = {
+	role: Exclude<GraphRole, 'ignore'>;
+	parentField?: string;
+	nodeType?: string;
+	labelField?: string;
+	subtitleField?: string;
+	/** Raw ELK string overrides for nodes of this table. */
+	layoutOptions?: Record<string, string>;
+};
+
 export type ResolvedEntityMap = {
 	enabled: boolean;
 	levelField?: string;
@@ -333,11 +388,22 @@ export type ResolvedEntity = {
 	 */
 	sort?: ResolvedTableSortKey[];
 	/**
-	 * Present when the entity participates in the graph.
-	 * `role: 'ignore'` may still be set so callers can filter uniformly.
+	 * Derived: which product views include this table.
+	 * `table` by default; `graph` / `map` from `graph.nodes` / `map.layers` membership.
+	 * Optional only to keep pre-v2 fixtures compiling; **merge always sets it**.
+	 * Consumers check `views ?? ['table']`.
+	 */
+	views?: ProductView[];
+	/**
+	 * @deprecated Denormalized graph role retained during the v1 → v2 transition so
+	 * existing consumers keep working. Prefer `config.graph.nodes[this.name]`.
+	 * Still present when the entity participates in the graph (never `ignore`).
 	 */
 	graph?: ResolvedEntityGraph;
-	/** Present when map metadata was resolved (enabled may still be false). */
+	/**
+	 * @deprecated Denormalized map metadata retained during the v1 → v2 transition.
+	 * Prefer `config.map.layers` (presence = membership).
+	 */
 	map?: ResolvedEntityMap;
 };
 
@@ -424,10 +490,16 @@ export type ResolvedGraph = {
 	hierarchy: GraphHierarchyRole[];
 	/** ELK options derived from overlay.graph.layout + defaults. */
 	layout: ResolvedGraphLayout;
+	/**
+	 * key = table name; presence = graph membership (no `ignore` entries).
+	 * Optional only to keep pre-v2 fixtures compiling; **merge always sets it**.
+	 */
+	nodes?: Record<string, ResolvedGraphNode>;
 };
 
 export type ResolvedConfig = {
-	version: 1;
+	/** `2` once merge emits v2; `1` allowed only for pre-v2 fixtures. */
+	version: 1 | 2;
 	/**
 	 * Surreal engine used when this config was resolved (from introspect).
 	 * Omitted only when merge input had no engine (unit fixtures).

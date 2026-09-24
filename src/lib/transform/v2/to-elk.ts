@@ -29,7 +29,7 @@ const FALLBACK_SIZE: ElkNodeSize = { width: 16, height: 16 };
 
 /** Collect non-empty layoutOptions maps from graph.nodes. */
 export function layoutOptionsByTableFromNodes(
-	nodes: Readonly<Record<string, Pick<ResolvedGraphNodeV2, 'layoutOptions'>>>
+	nodes: Readonly<Record<string, ResolvedGraphNodeV2>>
 ): Record<string, Record<string, string>> {
 	const out: Record<string, Record<string, string>> = {};
 	for (const [table, node] of Object.entries(nodes)) {

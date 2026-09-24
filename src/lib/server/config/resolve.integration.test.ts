@@ -121,15 +121,15 @@ describe('live resolveAppConfig', () => {
 		if (!available || !session) skip();
 		const overlay = await loadOverlay(session!);
 		expect(overlay).not.toBeNull();
-		expect(overlay?.version).toBe(1);
+		expect(overlay?.version).toBe(2);
 		expect(overlay?.excludeTables).toEqual(
 			expect.arrayContaining(['app_config', 'embeddings', '__entity', '__rollout'])
 		);
-		expect(overlay?.entities?.breakers?.graph).toMatchObject({
+		expect(overlay?.graph?.nodes?.breakers).toMatchObject({
 			role: 'breaker',
 			parentField: 'board'
 		});
-		expect(overlay?.edges?.connects?.role).toBe('feeds');
+		expect(overlay?.graph?.edges?.connects?.role).toBe('feeds');
 		expect(overlay?.map).toMatchObject({
 			units: 'm',
 			plane: 'xy-meters',
@@ -143,7 +143,7 @@ describe('live resolveAppConfig', () => {
 		invalidateConfigCache();
 
 		const a = await resolveAppConfig(session!, { skipCache: true });
-		expect(a.version).toBe(1);
+		expect(a.version).toBe(2);
 		expect(a.engine?.major).toEqual(expect.any(Number));
 		expect(a.tables.map((t) => t.name)).toEqual(
 			expect.arrayContaining(['electric_rooms', 'boards', 'breakers'])

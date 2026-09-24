@@ -26,7 +26,7 @@ describe('merge', () => {
 		const result = merge(emptyAuto);
 
 		expect(result).toEqual({
-			version: 1,
+			version: 2,
 			tables: [],
 			relations: [],
 			map: defaultMap,
@@ -37,7 +37,8 @@ describe('merge', () => {
 					...defaultGraph.layout,
 					spacing: { ...defaultGraph.layout.spacing },
 					compoundPadding: { ...defaultGraph.layout.compoundPadding }
-				}
+				},
+				nodes: {}
 			},
 			diagnostics: []
 		});
