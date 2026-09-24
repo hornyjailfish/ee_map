@@ -292,6 +292,8 @@
 				const vector = new VectorLayer({
 					source,
 					zIndex: layerView.zIndex,
+					updateWhileAnimating: true,
+					updateWhileInteracting: true,
 					style: (olFeature: FeatureLike) => {
 						const id = olFeature.getId();
 						const styleKey =
