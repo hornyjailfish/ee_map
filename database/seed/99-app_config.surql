@@ -2,13 +2,12 @@
 # EE presentation deltas for resolveAppConfig → merge(auto, overlay).
 # Sparse only — field inventories come from live INFO STRUCTURE.
 # INSERT IGNORE keeps local OWNER edits if the record already exists.
-# v2 shape (N13): entities = identity + grid; participation lives in
-#   graph.nodes.<table>, graph.edges.<relation>, map.layers.<table>.
+# Additive levels.map patch: 99b-app_config-levels-map.surql
 
 INSERT IGNORE INTO app_config [
 	{
 		id: app_config:main,
-		version: 2,
+		version: 1,
 		excludeTables: [
 			'__entity',
 			'__rollout',
@@ -20,6 +19,18 @@ INSERT IGNORE INTO app_config [
 				label: 'Electric rooms',
 				# When referenced (e.g. boards.room): show room name
 				display: { field: 'name' },
+				graph: {
+					role: 'room',
+					labelField: 'name'
+				},
+				map: {
+					enabled: true,
+					levelField: 'level',
+					geometryField: 'geometry',
+					layerGroup: 'rooms',
+					styleKey: 'electric_rooms',
+					zIndex: 10
+				},
 				table: {
 					order: ['name', 'level', 'geometry'],
 					# Natural string order (1.1 < 1.2 < 1.10 …)
@@ -33,6 +44,11 @@ INSERT IGNORE INTO app_config [
 					parts: [{ path: 'room.name' }, { path: 'name' }],
 					sep: ' · '
 				},
+				graph: {
+					role: 'board',
+					parentField: 'room',
+					labelField: 'name'
+				},
 				table: {
 					order: ['name', 'room'],
 					# Room first, then board name within room
@@ -42,6 +58,12 @@ INSERT IGNORE INTO app_config [
 			breakers: {
 				label: 'Breakers',
 				display: { field: 'name' },
+				graph: {
+					role: 'breaker',
+					parentField: 'board',
+					labelField: 'name',
+					subtitleField: 'description'
+				},
 				table: {
 					order: ['name', 'board', 'description', 'value'],
 					# Q1 < Q2 < Q10 (natural); then board for ties across panels
@@ -50,15 +72,48 @@ INSERT IGNORE INTO app_config [
 			},
 			rooms: {
 				label: 'Other rooms',
-				display: { field: 'name' }
+				display: { field: 'name' },
+				graph: {
+					role: 'ignore'
+				},
+				map: {
+					enabled: true,
+					levelField: 'level',
+					geometryField: 'geometry',
+					layerGroup: 'rooms',
+					styleKey: 'rooms',
+					zIndex: 20
+				}
 			},
 			rents: {
 				label: 'Rents',
-				display: { field: 'name' }
+				display: { field: 'name' },
+				graph: {
+					role: 'ignore'
+				},
+				map: {
+					enabled: true,
+					levelField: 'level',
+					geometryField: 'geometry',
+					layerGroup: 'tenancy',
+					styleKey: 'rents',
+					zIndex: 20
+				}
 			},
 			zones: {
 				label: 'Zones',
-				display: { field: 'name' }
+				display: { field: 'name' },
+				graph: {
+					role: 'ignore'
+				},
+				map: {
+					enabled: true,
+					levelField: 'level',
+					geometryField: 'geometry',
+					layerGroup: 'zones',
+					styleKey: 'zones',
+					zIndex: 5
+				}
 			},
 			shops: {
 				label: 'Shops',
@@ -69,78 +124,31 @@ INSERT IGNORE INTO app_config [
 				display: {
 					field: 'name'
 				},
+				# Floor plan background — no levelField (row id is the level)
+				map: {
+					enabled: true,
+					geometryField: 'geometry',
+					layerGroup: 'background',
+					styleKey: 'levels',
+					zIndex: 0
+				},
 				table: {
 					order: ['ord', 'name', 'geometry'],
 					sort: 'ord'
 				}
 			}
 		},
-		graph: {
-			nodes: {
-				electric_rooms: {
-					role: 'room',
-					labelField: 'name'
-				},
-				boards: {
-					role: 'board',
-					parentField: 'room',
-					labelField: 'name'
-				},
-				breakers: {
-					role: 'breaker',
-					parentField: 'board',
-					labelField: 'name',
-					subtitleField: 'description'
-				}
-			},
-			edges: {
-				connects: {
-					role: 'feeds',
-					labelField: 'cable'
-				}
+		edges: {
+			connects: {
+				role: 'feeds',
+				labelField: 'cable'
 			}
 		},
 		map: {
 			units: 'm',
 			plane: 'xy-meters',
 			levelsTable: 'levels',
-			levelOrderField: 'ord',
-			layers: {
-				levels: {
-					geometryField: 'geometry',
-					layerGroup: 'background',
-					styleKey: 'levels',
-					zIndex: 0
-				},
-				zones: {
-					levelField: 'level',
-					geometryField: 'geometry',
-					layerGroup: 'zones',
-					styleKey: 'zones',
-					zIndex: 5
-				},
-				electric_rooms: {
-					levelField: 'level',
-					geometryField: 'geometry',
-					layerGroup: 'rooms',
-					styleKey: 'electric_rooms',
-					zIndex: 10
-				},
-				rooms: {
-					levelField: 'level',
-					geometryField: 'geometry',
-					layerGroup: 'rooms',
-					styleKey: 'rooms',
-					zIndex: 20
-				},
-				rents: {
-					levelField: 'level',
-					geometryField: 'geometry',
-					layerGroup: 'tenancy',
-					styleKey: 'rents',
-					zIndex: 20
-				}
-			}
+			levelOrderField: 'ord'
 		},
 		search: {
 			fieldsByTable: {
