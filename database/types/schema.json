@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-09-06T05:53:25.836506Z",
+  "generatedAt": "2026-09-24T21:46:32.9420241Z",
   "namespace": "main",
   "database": "main",
   "tables": [
@@ -733,6 +733,32 @@
       "kind": "NORMAL",
       "fields": [
         {
+          "name": "geometry",
+          "define": "DEFINE FIELD geometry ON levels TYPE geometry<multiline> | geometry<polygon> | none PERMISSIONS FULL",
+          "type": {
+            "kind": "union",
+            "variants": [
+              {
+                "kind": "geometry",
+                "kinds": [
+                  "multiline"
+                ]
+              },
+              {
+                "kind": "geometry",
+                "kinds": [
+                  "polygon"
+                ]
+              }
+            ]
+          },
+          "optional": true,
+          "flexible": false,
+          "readonly": false,
+          "hasDefault": false,
+          "rawType": "geometry<multiline> | geometry<polygon> | none"
+        },
+        {
           "name": "name",
           "define": "DEFINE FIELD name ON levels TYPE string PERMISSIONS FULL",
           "type": {
@@ -823,6 +849,59 @@
           "define": "DEFINE INDEX unique_rent_name ON rents FIELDS name, level UNIQUE"
         }
       ]
+    },
+    {
+      "name": "rooms",
+      "define": "DEFINE TABLE rooms TYPE NORMAL SCHEMAFULL PERMISSIONS FULL",
+      "schemafull": true,
+      "kind": "NORMAL",
+      "fields": [
+        {
+          "name": "geometry",
+          "define": "DEFINE FIELD geometry ON rooms TYPE geometry<polygon> | none PERMISSIONS FULL",
+          "type": {
+            "kind": "geometry",
+            "kinds": [
+              "polygon"
+            ]
+          },
+          "optional": true,
+          "flexible": false,
+          "readonly": false,
+          "hasDefault": false,
+          "rawType": "geometry<polygon> | none"
+        },
+        {
+          "name": "level",
+          "define": "DEFINE FIELD level ON rooms TYPE record<levels> | none PERMISSIONS FULL",
+          "type": {
+            "kind": "record",
+            "tables": [
+              "levels"
+            ]
+          },
+          "optional": true,
+          "flexible": false,
+          "readonly": false,
+          "hasDefault": false,
+          "rawType": "record<levels> | none"
+        },
+        {
+          "name": "name",
+          "define": "DEFINE FIELD name ON rooms TYPE none | string PERMISSIONS FULL",
+          "type": {
+            "kind": "primitive",
+            "name": "string"
+          },
+          "optional": true,
+          "flexible": false,
+          "readonly": false,
+          "hasDefault": false,
+          "rawType": "none | string"
+        }
+      ],
+      "events": [],
+      "indexes": []
     },
     {
       "name": "shops",
@@ -951,7 +1030,65 @@
       "indexes": []
     }
   ],
-  "functions": [],
+  "functions": [
+    {
+      "name": "fn::default_relation",
+      "define": "DEFINE FUNCTION fn::default_relation($board: record<boards>) { LET $list = (SELECT VALUE id FROM breakers WHERE board = $board.id AND name != 'Q0'); LET $root = (SELECT VALUE id FROM ONLY breakers WHERE board = $board.id AND name = 'Q0' LIMIT 1); FOR $out IN $list { INSERT RELATION IGNORE INTO connects { in: $root, out: $out } }; } PERMISSIONS FULL",
+      "args": [
+        {
+          "name": "board",
+          "type": {
+            "kind": "record",
+            "tables": [
+              "boards"
+            ]
+          },
+          "optional": false
+        }
+      ]
+    },
+    {
+      "name": "fn::get_board_from_room",
+      "define": "DEFINE FUNCTION fn::get_board_from_room($name: string, $room: { id: record<electric_rooms> }) -> record<boards> { RETURN (SELECT VALUE id FROM ONLY boards WHERE name = $name AND room = $room.id LIMIT 1) } PERMISSIONS FULL",
+      "args": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "primitive",
+            "name": "string"
+          },
+          "optional": false
+        },
+        {
+          "name": "room",
+          "type": {
+            "kind": "unknown",
+            "source": "{ id: record<electric_rooms> }"
+          },
+          "optional": false
+        }
+      ],
+      "returns": {
+        "kind": "record",
+        "tables": [
+          "boards"
+        ]
+      }
+    },
+    {
+      "name": "fn::get_tables",
+      "define": "DEFINE FUNCTION fn::get_tables() -> array<string> { LET $info = (INFO FOR DATABASE); LET $out = []; FOR $table IN object::keys($info.tables) { LET $definition = $info.tables[$table]; LET $definition = string::words($definition); LET $filter = $definition.find_index('TYPE'); array::add($out, { name: $table, type: $definition[$filter + 1] }); }; RETURN $out; } COMMENT '' PERMISSIONS FULL",
+      "args": [],
+      "returns": {
+        "kind": "array",
+        "inner": {
+          "kind": "primitive",
+          "name": "string"
+        },
+        "max": null
+      }
+    }
+  ],
   "params": [],
   "analyzers": [],
   "accesses": [],
@@ -965,10 +1102,5 @@
   "sequences": [],
   "configs": [],
   "models": [],
-  "users": [
-    {
-      "name": "asdf",
-      "define": "DEFINE USER asdf ON DATABASE PASSHASH '[REDACTED]' ROLES VIEWER DURATION FOR TOKEN 1h, FOR SESSION NONE"
-    }
-  ]
+  "users": []
 }
