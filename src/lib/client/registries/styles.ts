@@ -25,6 +25,7 @@ const ASSIGNED_FOCUSED_STROKE = '#64748b';
 function polygonStyle(
 	fill: string,
 	stroke: string,
+	width: number,
 	focusedFill: string,
 	focusedStroke: string
 ): MapStyleFactory {
@@ -49,7 +50,7 @@ function polygonStyle(
 			fill: new Fill({ color: f }),
 			stroke: new Stroke({
 				color: s,
-				width: focused ? 2.5 : assigned ? 1 : 1.5,
+				width: focused ? 2.5 : assigned ? 1 : width,
 				lineDash: assigned && !focused ? [6, 4] : undefined
 			})
 		});
@@ -96,6 +97,7 @@ function pointStyle(
 const defaultFactory: MapStyleFactory = polygonStyle(
 	'rgba(148, 163, 184, 0.25)',
 	'#94a3b8',
+	1.5,
 	'rgba(100, 116, 139, 0.45)',
 	'#475569'
 );
@@ -109,6 +111,7 @@ const styles: Record<string, MapStyleFactory> = {
 	electric_rooms: polygonStyle(
 		'rgba(59, 130, 246, 0.22)',
 		'#3b82f6',
+		2,
 		'rgba(37, 99, 235, 0.45)',
 		'#1d4ed8'
 	),
@@ -116,6 +119,7 @@ const styles: Record<string, MapStyleFactory> = {
 	rents: polygonStyle(
 		'rgba(245, 158, 11, 0.22)',
 		'#f59e0b',
+		1.5,
 		'rgba(217, 119, 6, 0.45)',
 		'#b45309'
 	),
@@ -123,6 +127,7 @@ const styles: Record<string, MapStyleFactory> = {
 	zones: polygonStyle(
 		'rgba(34, 197, 94, 0.10)',
 		'#22c55e88',
+		1,
 		'rgba(22, 163, 74, 0.4)',
 		'#15803d'
 	),
@@ -137,14 +142,16 @@ const styles: Record<string, MapStyleFactory> = {
 			'draw-draft': polygonStyle(
 				'rgba(168, 85, 247, 0.28)',
 				'#a855f7',
+				3.5,
 				'rgba(147, 51, 234, 0.45)',
 				'#7e22ce'
 			),
 			/** Floor-plan linework */
 			levels: polygonStyle(
-				'rgba(100, 116, 139, 0.05)',
+				'rgba(100, 116, 139, 0.1)',
 				'#64748b',
-				'rgba(71, 85, 105, 0.12)',
+				5,
+				'rgba(71, 85, 105, 1)',
 				'#475569'
 			)
 		};
