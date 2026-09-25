@@ -5,7 +5,7 @@
 	 */
 	import type { EditorOption } from '$lib/client/editors';
 	import type { GraphCrudMeta } from '$lib/transform/graph-crud';
-	import type { GraphViewModel } from '$lib/transform/to-graph';
+	import type { BreadcrumbLevel, GraphViewModel } from '$lib/transform/to-graph';
 	import { graphStructureSignature } from './graph-flow';
 	import GraphCanvas from './GraphCanvas.svelte';
 
@@ -20,6 +20,8 @@
 		crud?: GraphCrudMeta | null;
 		/** Record-link picker options keyed by child table → field name. */
 		recordOptionsByTable?: Record<string, Record<string, EditorOption[]>>;
+		/** Ordered breadcrumb levels derived from resolved graph config. */
+		breadcrumbLevels?: BreadcrumbLevel[];
 	};
 
 	let {
@@ -27,7 +29,8 @@
 		canEdit = false,
 		relation = null,
 		crud = null,
-		recordOptionsByTable = {}
+		recordOptionsByTable = {},
+		breadcrumbLevels = []
 	}: Props = $props();
 
 	/** Nodes + ELK knobs only. New/deleted wires must not remount (that fitViews). */
@@ -36,6 +39,6 @@
 
 <div class="graph-view relative h-full min-h-0 w-full">
 	{#key structureKey}
-		<GraphCanvas {graph} {canEdit} {relation} {crud} {recordOptionsByTable} />
+		<GraphCanvas {graph} {canEdit} {relation} {crud} {recordOptionsByTable} {breadcrumbLevels} />
 	{/key}
 </div>

@@ -305,6 +305,33 @@ function serializeRowValues(row: Record<string, unknown>): Record<string, string
 	return out;
 }
 
+/**
+ * One breadcrumb level: an ordered graph role plus its fallback display label.
+ * Derived from ResolvedConfig so the crumb trail follows the app hierarchy
+ * instead of hard-coded table names.
+ */
+export type BreadcrumbLevel = {
+	role: string;
+	label: string;
+};
+
+/**
+ * Ordered breadcrumb levels for the roles actually present in the graph,
+ * following `config.graph.hierarchy`. Labels come from the first resolved
+ * entity mapped to each role (e.g. `room` → "Electric rooms").
+ */
+export function breadcrumbLevels(config: ResolvedConfig): BreadcrumbLevel[] {
+	const labelByRole = new Map<string, string>();
+	for (const table of config.tables) {
+		const role = table.graph?.role;
+		if (!role || role === 'ignore' || labelByRole.has(role)) continue;
+		labelByRole.set(role, table.label);
+	}
+	return config.graph.hierarchy
+		.filter((role) => labelByRole.has(role))
+		.map((role) => ({ role, label: labelByRole.get(role)! }));
+}
+
 /** Stable topological order: each parent appears before its children. */
 function orderParentsBeforeChildren(nodes: GraphNode[]): GraphNode[] {
 	const byId = new Map(nodes.map((n) => [n.id, n]));

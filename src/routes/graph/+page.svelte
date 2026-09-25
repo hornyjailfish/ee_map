@@ -17,6 +17,7 @@
 	const relation = $derived(data.relation);
 	const crud = $derived(data.crud);
 	const recordOptionsByTable = $derived(data.recordOptionsByTable ?? {});
+	const breadcrumbLevels = $derived(data.breadcrumbLevels ?? []);
 	const nodeCount = $derived(graph?.nodes.length ?? 0);
 	const edgeCount = $derived(graph?.edges.length ?? 0);
 	const userRoles = $derived((data.userRoles ?? []) as AppRole[]);
@@ -29,6 +30,7 @@
 		relation?: string | null;
 		crud?: typeof crud;
 		recordOptionsByTable?: typeof recordOptionsByTable;
+		breadcrumbLevels?: typeof breadcrumbLevels;
 	};
 	// let GraphView = $state<Component<GraphViewProps> | null>(null);
 
@@ -85,7 +87,14 @@
 				<p>No nodes to display. Check entity rows and graph roles in config.</p>
 			</div>
 		{:else if browser && GraphView}
-			<GraphView {graph} canEdit={roleCanEdit} {relation} {crud} {recordOptionsByTable} />
+			<GraphView
+				{graph}
+				canEdit={roleCanEdit}
+				{relation}
+				{crud}
+				{recordOptionsByTable}
+				{breadcrumbLevels}
+			/>
 		{:else}
 			<ViewLoadingOverlay label="Loading graph canvas…" veil={false} />
 		{/if}

@@ -19,7 +19,12 @@ import { resolveAppConfig } from '$lib/server/config';
 import { getUserRoles } from '$lib/server/catalog';
 import { buildGraphCrudMeta, type GraphCrudMeta } from '$lib/transform/graph-crud';
 import { stripGraphForClient } from '$lib/transform/strip-graph';
-import { toGraph, type GraphViewModel } from '$lib/transform/to-graph';
+import {
+	toGraph,
+	breadcrumbLevels as buildBreadcrumbLevels,
+	type BreadcrumbLevel,
+	type GraphViewModel
+} from '$lib/transform/to-graph';
 import { entityByName } from '$lib/transform/to-table';
 
 const connectSchema = z.object({
@@ -44,6 +49,8 @@ export type GraphPageData = {
 	crud: GraphCrudMeta | null;
 	/** Add-row record pickers keyed by child table → field name. */
 	recordOptionsByTable: Record<string, Record<string, RecordOption[]>>;
+	/** Ordered breadcrumb levels derived from resolved graph config. */
+	breadcrumbLevels: BreadcrumbLevel[];
 	/** Non-fatal load / validation message. */
 	error: string | null;
 };
@@ -54,6 +61,7 @@ function emptyPage(partial?: Partial<GraphPageData>): GraphPageData {
 		relation: null,
 		crud: null,
 		recordOptionsByTable: {},
+		breadcrumbLevels: [],
 		error: null,
 		...partial
 	};
@@ -65,9 +73,7 @@ async function loadChildRecordOptions(
 	config: ResolvedConfig,
 	crud: GraphCrudMeta
 ): Promise<Record<string, Record<string, RecordOption[]>>> {
-	const childTables = new Set(
-		Object.values(crud.createByParentTable).map((s) => s.childTable)
-	);
+	const childTables = new Set(Object.values(crud.createByParentTable).map((s) => s.childTable));
 	const out: Record<string, Record<string, RecordOption[]>> = {};
 	await Promise.all(
 		[...childTables].map(async (name) => {
@@ -161,7 +167,9 @@ function failFromError(error: unknown) {
 
 export const actions: Actions = {
 	connect: async ({ request, locals, fetch }) => {
-		const parsed = connectSchema.safeParse(Object.fromEntries((await request.formData()).entries()));
+		const parsed = connectSchema.safeParse(
+			Object.fromEntries((await request.formData()).entries())
+		);
 		if (!parsed.success) {
 			return fail(400, { code: 'invalid_form', message: 'Invalid form data' });
 		}
@@ -268,10 +276,12 @@ export const load: PageServerLoad = async ({ parent, locals }): Promise<GraphPag
 	}
 
 	const crud = buildGraphCrudMeta(config);
+	const breadcrumbLevels = buildBreadcrumbLevels(config);
 
 	if (!locals.session?.isConnected) {
 		return emptyPage({
 			crud,
+			breadcrumbLevels,
 			error: locals.dbError ?? 'Database unavailable'
 		});
 	}
@@ -283,42 +293,45 @@ export const load: PageServerLoad = async ({ parent, locals }): Promise<GraphPag
 		return emptyPage({
 			relation: defaultRelation?.name ?? null,
 			crud,
+			breadcrumbLevels,
 			error: 'No graph entities in resolved config (assign graph.role in overlay)'
 		});
 	}
 
 	try {
-			const [{ bundle, errors }, recordOptionsByTable] = await Promise.all([
-				queryGraphBundle(locals.session, config),
-				loadChildRecordOptions(locals.session, config, crud)
-			]);
-			const model = toGraph({
-				config,
-				entities: bundle.entities,
-				relations: bundle.relations
-			});
-			const graph = stripGraphForClient(model);
+		const [{ bundle, errors }, recordOptionsByTable] = await Promise.all([
+			queryGraphBundle(locals.session, config),
+			loadChildRecordOptions(locals.session, config, crud)
+		]);
+		const model = toGraph({
+			config,
+			entities: bundle.entities,
+			relations: bundle.relations
+		});
+		const graph = stripGraphForClient(model);
 
-			const parts: string[] = [];
-			if (errors.length) parts.push(errors.join('; '));
-			if (graph.nodes.length === 0 && graphTables.length > 0) {
-				parts.push('No graph nodes loaded');
-			}
-
-			return {
-				graph,
-				relation: defaultRelation?.name ?? null,
-				crud,
-				recordOptionsByTable,
-				error: parts.length ? parts.join(' · ') : null
-			};
-		} catch (err) {
-			const message = err instanceof Error ? err.message : 'Failed to load graph data';
-			console.warn('[graph] queryGraphBundle failed:', message);
-			return emptyPage({
-				relation: defaultRelation?.name ?? null,
-				crud,
-				error: message
-			});
+		const parts: string[] = [];
+		if (errors.length) parts.push(errors.join('; '));
+		if (graph.nodes.length === 0 && graphTables.length > 0) {
+			parts.push('No graph nodes loaded');
 		}
-	};
+
+		return {
+			graph,
+			relation: defaultRelation?.name ?? null,
+			crud,
+			recordOptionsByTable,
+			breadcrumbLevels,
+			error: parts.length ? parts.join(' · ') : null
+		};
+	} catch (err) {
+		const message = err instanceof Error ? err.message : 'Failed to load graph data';
+		console.warn('[graph] queryGraphBundle failed:', message);
+		return emptyPage({
+			relation: defaultRelation?.name ?? null,
+			crud,
+			breadcrumbLevels,
+			error: message
+		});
+	}
+};

@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { RecordId } from 'surrealdb';
 import { DEFAULT_GRAPH_LAYOUT } from '$lib/config/merge';
 import type { ResolvedConfig, ResolvedEntity, ResolvedEdge } from '$lib/config/types';
-import { recordIdToString, toGraph } from './to-graph';
+import { breadcrumbLevels, recordIdToString, toGraph } from './to-graph';
 
 function field(name: string, type = 'string') {
 	return {
@@ -117,6 +117,16 @@ describe('recordIdToString', () => {
 		expect(recordIdToString(null)).toBeNull();
 		expect(recordIdToString(undefined)).toBeNull();
 		expect(recordIdToString('')).toBeNull();
+	});
+});
+
+describe('breadcrumbLevels', () => {
+	it('derives ordered levels from hierarchy with entity labels, skipping ignore/missing', () => {
+		expect(breadcrumbLevels(eeConfig)).toEqual([
+			{ role: 'room', label: 'electric_rooms' },
+			{ role: 'board', label: 'boards' },
+			{ role: 'breaker', label: 'breakers' }
+		]);
 	});
 });
 

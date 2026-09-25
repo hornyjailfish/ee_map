@@ -29,9 +29,15 @@
 	import AddRowModal from '$lib/components/table/AddRowModal.svelte';
 	import type { GraphChildCreateSpec, GraphCrudMeta } from '$lib/transform/graph-crud';
 	import type { TableColumn } from '$lib/transform/to-table';
-	import type { GraphEdge, GraphNode, GraphViewModel } from '$lib/transform/to-graph';
+	import type {
+		GraphEdge,
+		GraphNode,
+		GraphViewModel,
+		BreadcrumbLevel
+	} from '$lib/transform/to-graph';
 	import { graphEdgeSignature, toFlowEdges, toMeasureNodes } from './graph-flow';
 	import GraphLayoutRunner from './GraphLayoutRunner.svelte';
+	import Breadcrumb from './Breadcrumb.svelte';
 	import {
 		setGraphNodeActions,
 		type GraphNodeDeleteRef,
@@ -50,6 +56,8 @@
 		crud?: GraphCrudMeta | null;
 		/** Record-link picker options keyed by child table → field name. */
 		recordOptionsByTable?: Record<string, Record<string, EditorOption[]>>;
+		/** Ordered breadcrumb levels derived from resolved graph config. */
+		breadcrumbLevels?: BreadcrumbLevel[];
 	};
 
 	let {
@@ -57,7 +65,8 @@
 		canEdit = false,
 		relation = null,
 		crud = null,
-		recordOptionsByTable = {}
+		recordOptionsByTable = {},
+		breadcrumbLevels = []
 	}: Props = $props();
 
 	const nodeUi = $derived({ canEdit, crud });
@@ -82,9 +91,7 @@
 	// Mount-time only — parent `{#key structureKey}` remounts on node/layout change (not wires).
 	// svelte-ignore state_referenced_locally (intentional: capture initial measure snapshot)
 	let nodes = $state.raw<GraphNode[]>(
-		applyNodeUiFlags(
-			applyNodeSelection(toMeasureNodes(graph, { canEdit, crud }), appUi.focusedId)
-		)
+		applyNodeUiFlags(applyNodeSelection(toMeasureNodes(graph, { canEdit, crud }), appUi.focusedId))
 	);
 	// svelte-ignore state_referenced_locally (intentional: capture initial measure snapshot)
 	let edges = $state.raw<GraphEdge[]>(toFlowEdges(graph));
@@ -115,9 +122,7 @@
 	const addRecordOptions = $derived(
 		addSpec ? (recordOptionsByTable[addSpec.childTable] ?? {}) : {}
 	);
-	const addTitle = $derived(
-		addSpec ? `Add row to ${addSpec.childLabel}` : 'Add row'
-	);
+	const addTitle = $derived(addSpec ? `Add row to ${addSpec.childLabel}` : 'Add row');
 	const addDescription = $derived(
 		addParent
 			? `Under ${addParent.label}. Parent link is pre-filled.`
@@ -309,7 +314,9 @@
 		const serverIds = new Set(serverEdges.map((e) => e.id));
 		const localOnly = edges.filter(
 			(e) =>
-				!e.id.startsWith('tmp:') && !serverIds.has(e.id) && !serverPairs.has(`${e.source}>${e.target}`)
+				!e.id.startsWith('tmp:') &&
+				!serverIds.has(e.id) &&
+				!serverPairs.has(`${e.source}>${e.target}`)
 		);
 		edges = [...serverEdges, ...localOnly, ...keepTmp];
 	});
@@ -608,7 +615,10 @@
 		{onnodeclick}
 		selectionOnDrag
 		panOnDrag={[1]}
-		onselectionchange={({nodes, edges})=>{if(nodes.length == 0) appUi.clearSelection(); if(nodes.length > 0) appUi.setSelected(nodes.map(n => n.id));}}
+		onselectionchange={({ nodes, edges }) => {
+			if (nodes.length == 0) appUi.clearSelection();
+			if (nodes.length > 0) appUi.setSelected(nodes.map((n) => n.id));
+		}}
 		selectNodesOnDrag={true}
 		{onbeforeconnect}
 		{onconnect}
@@ -625,6 +635,12 @@
 			{onLayoutDone}
 			{onLayoutError}
 		/>
+
+		{#if breadcrumbLevels.length > 0}
+			<Panel position="top-center" class="m-2!">
+				<Breadcrumb levels={breadcrumbLevels} />
+			</Panel>
+		{/if}
 
 		<Panel position="top-right" class="m-2!">
 			<Button
@@ -646,58 +662,58 @@
 		</Panel>
 
 		<Background gap={28} size={4} />
-					<Controls showLock={false} />
-					<MiniMap pannable zoomable class="bg-accent!" />
+		<Controls showLock={false} />
+		<MiniMap pannable zoomable class="bg-accent!" />
 	</SvelteFlow>
 
-		<AddRowModal
-					bind:open={addOpen}
-					title={addTitle}
-					description={addDescription}
-					fields={addSpec?.fields ?? []}
-					recordOptions={addRecordOptions}
-					initialValues={addInitialValues}
-					lockedFields={addLockedFields}
-					submitting={addSubmitting}
-					error={addError}
-					onSubmit={submitAddChild}
-				/>
+	<AddRowModal
+		bind:open={addOpen}
+		title={addTitle}
+		description={addDescription}
+		fields={addSpec?.fields ?? []}
+		recordOptions={addRecordOptions}
+		initialValues={addInitialValues}
+		lockedFields={addLockedFields}
+		submitting={addSubmitting}
+		error={addError}
+		onSubmit={submitAddChild}
+	/>
 
-			<AddRowModal
-					bind:open={editOpen}
-					title={editTitle}
-					description={editDescription}
-					fields={editFields}
-					recordOptions={editRecordOptions}
-					initialValues={editInitialValues}
-					submitting={editSubmitting}
-					error={editError}
-					submitLabel="Save"
-					errorTitle="Update failed"
-					onSubmit={submitEditNode}
-				/>
+	<AddRowModal
+		bind:open={editOpen}
+		title={editTitle}
+		description={editDescription}
+		fields={editFields}
+		recordOptions={editRecordOptions}
+		initialValues={editInitialValues}
+		submitting={editSubmitting}
+		error={editError}
+		submitLabel="Save"
+		errorTitle="Update failed"
+		onSubmit={submitEditNode}
+	/>
 </div>
 
 <style>
-.graph-canvas :global(.svelte-flow) {
-	height: 100%;
-	width: 100%;
-}
+	.graph-canvas :global(.svelte-flow) {
+		height: 100%;
+		width: 100%;
+	}
 
-.graph-canvas :global(.svelte-flow__node) {
-	font-family: inherit;
-	width: auto;
-	height: auto;
-	padding: 0;
-	border: none;
-	background: transparent;
-	box-shadow: none;
-	overflow: visible;
-}
+	.graph-canvas :global(.svelte-flow__node) {
+		font-family: inherit;
+		width: auto;
+		height: auto;
+		padding: 0;
+		border: none;
+		background: transparent;
+		box-shadow: none;
+		overflow: visible;
+	}
 
-.graph-canvas :global(.svelte-flow__node-room),
-.graph-canvas :global(.svelte-flow__node-board),
-.graph-canvas :global(.svelte-flow__node-group) {
-	overflow: visible;
-}
+	.graph-canvas :global(.svelte-flow__node-room),
+	.graph-canvas :global(.svelte-flow__node-board),
+	.graph-canvas :global(.svelte-flow__node-group) {
+		overflow: visible;
+	}
 </style>
