@@ -4,9 +4,8 @@
 	import GraphNodePropsToolbar from '../GraphNodePropsToolbar.svelte';
 	import { getGraphNodeUi } from '../graph-node-ui';
 
-	type OutputNode = Node<GraphNodeData, 'output'>;
-	let { id, data, selected, selectable, draggable, isConnectable }: NodeProps<OutputNode> = $props();
-
+	type InputNode = Node<GraphNodeData, 'input'>;
+	let { id, data, selected, selectable, draggable, isConnectable }: NodeProps<InputNode> = $props();
 	const nodeUi = getGraphNodeUi();
 
 	/** Outputs are wiring endpoints (handles visible; drag requires nodesConnectable). */
@@ -19,24 +18,24 @@
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions (node double-click escape hatch for non-selectable nodes) -->
-	<div class={['output-node', selected && 'is-selected']} ondblclick={onDoubleClick}>
+	<div class={['input-node', selected && 'is-selected']} ondblclick={onDoubleClick}>
 		<GraphNodePropsToolbar {id} {selectable} {draggable} />
-	<div class="output-node__body">
-		<span class="output-node__role">output</span>
-		<span class="output-node__label">{data.label}</span>
+	<div class="input-node__body">
+		<span class="input-node__role">input</span>
+		<span class="input-node__label">{data.label}</span>
 		{#if data.subtitle}
-			<span class="output-node__subtitle">{data.subtitle}</span>
+			<span class="input-node__subtitle">{data.subtitle}</span>
 		{/if}
 	</div>
 
 	{#if showHandles}
-		<Handle type="target" position={Position.Top} class="graph-handle" {isConnectable} />
-		<!-- <Handle type="source" position={Position.Bottom} class="graph-handle" {isConnectable} /> -->
+		<!-- <Handle type="target" position={Position.Top} class="graph-handle" {isConnectable} /> -->
+		<Handle type="source" position={Position.Bottom} class="graph-handle" {isConnectable} />
 	{/if}
 </div>
 
 <style>
-	.output-node {
+	.input-node {
 		box-sizing: border-box;
 		display: inline-block;
 		border-radius: 0.5rem;
@@ -48,14 +47,14 @@
 		line-height: 1.25;
 	}
 
-	.output-node.is-selected {
+	.input-node.is-selected {
 		border-color: color-mix(in oklab, oklch(0.7 0.14 45) 60%, var(--ring, #a3a3a3));
 		box-shadow:
 			0 0 0 1px color-mix(in oklab, oklch(0.7 0.14 45) 40%, transparent),
 			0 1px 2px rgb(0 0 0 / 0.08);
 	}
 
-	.output-node__body {
+	.input-node__body {
 		display: flex;
 		flex-direction: column;
 		gap: 0.125rem;
@@ -63,7 +62,7 @@
 		white-space: nowrap;
 	}
 
-	.output-node__role {
+	.input-node__role {
 		font-size: 0.625rem;
 		font-weight: 600;
 		text-transform: uppercase;
@@ -71,12 +70,12 @@
 		color: color-mix(in oklab, oklch(0.6 0.12 45) 75%, var(--muted-foreground, #737373));
 	}
 
-	.output-node__label {
+	.input-node__label {
 		font-weight: 600;
 		font-size: 0.8125rem;
 	}
 
-	.output-node__subtitle {
+	.input-node__subtitle {
 		color: var(--muted-foreground, #737373);
 	}
 

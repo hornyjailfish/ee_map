@@ -21,7 +21,7 @@
 
 <!-- Content-sized. Handles on breaker role; isConnectable follows canvas nodesConnectable. -->
 <!-- svelte-ignore a11y_no_static_element_interactions (node double-click escape hatch for non-selectable nodes) -->
-	<div class={['breaker-node', selected && 'is-selected']} ondblclick={onDoubleClick}>
+	<div class={['breaker-node', selected && 'is-selected', 'backdrop-blur-xs']} ondblclick={onDoubleClick}>
 	<GraphNodeToolbar {id} {data} />
 	<GraphNodePropsToolbar {id} {selectable} {draggable} />
 	<div class="breaker-node__body">
@@ -42,8 +42,9 @@
 		box-sizing: border-box;
 		display: inline-block;
 		border-radius: 0.5rem;
-		border: 1px solid var(--border, #e5e5e5);
-		background: var(--background, #fff);
+		border: 1px solid var(--chart-5, #e5e5e5);
+		/*background: --alpha(var(--color-background)/60%);*/
+		background: transparent;
 		color: var(--card-foreground, #171717);
 		box-shadow: 0 1px 2px rgb(0 0 0 / 0.05);
 		font-size: 0.75rem;
@@ -58,6 +59,8 @@
 	}
 
 	.breaker-node__body {
+		background: --alpha(var(--color-background)/30%);
+
 		display: flex;
 		flex-direction: column;
 		gap: 0.125rem;

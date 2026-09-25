@@ -338,7 +338,7 @@
 		const tgt = nodes.find((n) => n.id === target);
 		if (!src?.data?.canConnect || !tgt?.data?.canConnect) return false;
 		// connects: breakers → breakers | rents(output)
-		if (src.data.role !== 'breaker') return false;
+		if (src.data.role !== 'breaker' && src.data.role !== 'input') return false;
 		if (tgt.data.role !== 'breaker' && tgt.data.role !== 'output') return false;
 		return true;
 	}

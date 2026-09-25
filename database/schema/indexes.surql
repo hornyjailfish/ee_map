@@ -26,6 +26,10 @@ DEFINE INDEX unique_breakers
     ON breakers FIELDS name, board
     UNIQUE;
 
+DEFINE INDEX unique_trans_name
+    ON transformers FIELDS name, room
+    UNIQUE;
+
 DEFINE INDEX one_edge
     ON connects FIELDS in, out
     UNIQUE;

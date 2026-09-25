@@ -3,6 +3,7 @@
  * Output GraphViewModel is identical to v1 toGraph (SF-ready).
  */
 
+import { withHandles } from '$lib/client/registries/nodes';
 import type { GraphRole } from '$lib/config/types';
 import {
 	recordIdToString,
@@ -95,7 +96,7 @@ function sortedNodeEntries(config: ResolvedConfigV2): Array<[string, ResolvedGra
 }
 
 function isConnectable(role: GraphRole | string): boolean {
-	return role === 'output' || role === 'breaker';
+	return withHandles.includes(role ?? "");
 }
 
 function rowToNodeV2(

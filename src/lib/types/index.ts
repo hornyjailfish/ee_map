@@ -31,7 +31,7 @@ export interface Breakers {
 export interface Connects {
 	id: RecordId<'connects'>;
 	cable?: string;
-	in: RecordId<'breakers'>;
+	in: RecordId<'breakers'> | RecordId<'transformers'>;
 	out: RecordId<'breakers'> | RecordId<'rents'>;
 }
 
@@ -77,6 +77,12 @@ export interface Shops {
 	aliases?: string[];
 	area?: RecordId<'rents'>;
 	name: string;
+}
+
+export interface Transformers {
+	id: RecordId<'transformers'>;
+	name: string;
+	room: RecordId<'electric_rooms'>;
 }
 
 export interface Zones {

@@ -70,6 +70,18 @@ INSERT IGNORE INTO app_config [
 					sort: [{ field: 'board' }, { field: 'name' }]
 				}
 			},
+			transformers: {
+				label: 'Transformers',
+				display: { field: 'name' },
+				graph: {
+					role: 'input',
+					parentField: 'room',
+					labelField: 'name',
+				},
+				table: {
+					order: ['name', 'room'],
+				}
+			},
 			rooms: {
 				label: 'Other rooms',
 				display: { field: 'name' },

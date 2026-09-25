@@ -19,7 +19,6 @@
 	};
 
 	let { id, data, ...rest}: Props = $props();
-	$inspect(id,data,rest)
 	const actions = getGraphNodeActions();
 
 	const show = $derived(Boolean(data.canAddChild || data.canUpdate || data.canDelete));

@@ -32,10 +32,14 @@ DEFINE FIELD name ON boards TYPE string;
 DEFINE FIELD room ON boards TYPE record<electric_rooms>;
 
 DEFINE TABLE breakers SCHEMAFULL PERMISSIONS FULL;
-DEFINE FIELD name ON breakers TYPE string ASSERT $value = <regex>/^Q[0-9]+$/;
+DEFINE FIELD name ON breakers TYPE string ASSERT string::matches($value, '^(Q|K)[0-9]+(\\.[0-9]+)?$');
 DEFINE FIELD description ON breakers TYPE string | none;
 DEFINE FIELD value ON breakers TYPE number | none;
 DEFINE FIELD board ON breakers TYPE record<boards>;
+
+DEFINE TABLE transformers SCHEMAFULL PERMISSIONS FULL;
+DEFINE FIELD name ON transformers TYPE string;
+DEFINE FIELD room ON transformers TYPE record<electric_rooms>;
 
 # main graph for electric connections
 DEFINE TABLE connects TYPE RELATION IN breakers OUT breakers | rents SCHEMALESS PERMISSIONS FULL;

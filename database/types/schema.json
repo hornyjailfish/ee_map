@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-09-06T05:53:25.836506Z",
+  "generatedAt": "2026-09-25T06:22:09.5629334Z",
   "namespace": "main",
   "database": "main",
   "tables": [
@@ -465,7 +465,7 @@
         },
         {
           "name": "name",
-          "define": "DEFINE FIELD name ON breakers TYPE string ASSERT $value = <regex> /^Q[0-9]+$/ PERMISSIONS FULL",
+          "define": "DEFINE FIELD name ON breakers TYPE string ASSERT string::matches($value, '^(Q|K)[0-9]+(\\\\.[0-9]+)?$') PERMISSIONS FULL",
           "type": {
             "kind": "primitive",
             "name": "string"
@@ -500,7 +500,7 @@
     },
     {
       "name": "connects",
-      "define": "DEFINE TABLE connects TYPE RELATION IN breakers OUT breakers | rents SCHEMALESS PERMISSIONS FULL",
+      "define": "DEFINE TABLE connects TYPE RELATION IN breakers | transformers OUT breakers | rents SCHEMALESS PERMISSIONS FULL",
       "schemafull": false,
       "kind": "RELATION",
       "fields": [
@@ -519,18 +519,19 @@
         },
         {
           "name": "in",
-          "define": "DEFINE FIELD in ON connects TYPE record<breakers> PERMISSIONS FULL",
+          "define": "DEFINE FIELD in ON connects TYPE record<breakers | transformers> PERMISSIONS FULL",
           "type": {
             "kind": "record",
             "tables": [
-              "breakers"
+              "breakers",
+              "transformers"
             ]
           },
           "optional": false,
           "flexible": false,
           "readonly": false,
           "hasDefault": false,
-          "rawType": "record<breakers>"
+          "rawType": "record<breakers | transformers>"
         },
         {
           "name": "out",
@@ -733,6 +734,36 @@
       "kind": "NORMAL",
       "fields": [
         {
+          "name": "geometry",
+          "define": "DEFINE FIELD geometry ON levels TYPE geometry<multiline> | none PERMISSIONS FULL",
+          "type": {
+            "kind": "geometry",
+            "kinds": [
+              "multiline"
+            ]
+          },
+          "optional": true,
+          "flexible": false,
+          "readonly": false,
+          "hasDefault": false,
+          "rawType": "geometry<multiline> | none"
+        },
+        {
+          "name": "geometry.*",
+          "define": "DEFINE FIELD geometry.* ON levels TYPE geometry<line> PERMISSIONS FULL",
+          "type": {
+            "kind": "geometry",
+            "kinds": [
+              "line"
+            ]
+          },
+          "optional": false,
+          "flexible": false,
+          "readonly": false,
+          "hasDefault": false,
+          "rawType": "geometry<line>"
+        },
+        {
           "name": "name",
           "define": "DEFINE FIELD name ON levels TYPE string PERMISSIONS FULL",
           "type": {
@@ -825,6 +856,59 @@
       ]
     },
     {
+      "name": "rooms",
+      "define": "DEFINE TABLE rooms TYPE NORMAL SCHEMAFULL PERMISSIONS FULL",
+      "schemafull": true,
+      "kind": "NORMAL",
+      "fields": [
+        {
+          "name": "geometry",
+          "define": "DEFINE FIELD geometry ON rooms TYPE geometry<polygon> | none PERMISSIONS FULL",
+          "type": {
+            "kind": "geometry",
+            "kinds": [
+              "polygon"
+            ]
+          },
+          "optional": true,
+          "flexible": false,
+          "readonly": false,
+          "hasDefault": false,
+          "rawType": "geometry<polygon> | none"
+        },
+        {
+          "name": "level",
+          "define": "DEFINE FIELD level ON rooms TYPE record<levels> | none PERMISSIONS FULL",
+          "type": {
+            "kind": "record",
+            "tables": [
+              "levels"
+            ]
+          },
+          "optional": true,
+          "flexible": false,
+          "readonly": false,
+          "hasDefault": false,
+          "rawType": "record<levels> | none"
+        },
+        {
+          "name": "name",
+          "define": "DEFINE FIELD name ON rooms TYPE none | string PERMISSIONS FULL",
+          "type": {
+            "kind": "primitive",
+            "name": "string"
+          },
+          "optional": true,
+          "flexible": false,
+          "readonly": false,
+          "hasDefault": false,
+          "rawType": "none | string"
+        }
+      ],
+      "events": [],
+      "indexes": []
+    },
+    {
       "name": "shops",
       "define": "DEFINE TABLE shops TYPE NORMAL SCHEMAFULL PERMISSIONS FULL",
       "schemafull": true,
@@ -898,6 +982,49 @@
       ]
     },
     {
+      "name": "transformers",
+      "define": "DEFINE TABLE transformers TYPE NORMAL SCHEMAFULL PERMISSIONS FULL",
+      "schemafull": true,
+      "kind": "NORMAL",
+      "fields": [
+        {
+          "name": "name",
+          "define": "DEFINE FIELD name ON transformers TYPE string PERMISSIONS FULL",
+          "type": {
+            "kind": "primitive",
+            "name": "string"
+          },
+          "optional": false,
+          "flexible": false,
+          "readonly": false,
+          "hasDefault": false,
+          "rawType": "string"
+        },
+        {
+          "name": "room",
+          "define": "DEFINE FIELD room ON transformers TYPE record<electric_rooms> PERMISSIONS FULL",
+          "type": {
+            "kind": "record",
+            "tables": [
+              "electric_rooms"
+            ]
+          },
+          "optional": false,
+          "flexible": false,
+          "readonly": false,
+          "hasDefault": false,
+          "rawType": "record<electric_rooms>"
+        }
+      ],
+      "events": [],
+      "indexes": [
+        {
+          "name": "unique_trans_name",
+          "define": "DEFINE INDEX unique_trans_name ON transformers FIELDS name, room UNIQUE"
+        }
+      ]
+    },
+    {
       "name": "zones",
       "define": "DEFINE TABLE zones TYPE NORMAL SCHEMAFULL PERMISSIONS FULL",
       "schemafull": true,
@@ -951,7 +1078,52 @@
       "indexes": []
     }
   ],
-  "functions": [],
+  "functions": [
+    {
+      "name": "fn::default_relation",
+      "define": "DEFINE FUNCTION fn::default_relation($board: record<boards>) { LET $list = (SELECT VALUE id FROM breakers WHERE board = $board.id AND name != 'Q0'); LET $root = (SELECT VALUE id FROM ONLY breakers WHERE board = $board.id AND name = 'Q0' LIMIT 1); FOR $out IN $list { INSERT RELATION IGNORE INTO connects { in: $root, out: $out } }; } PERMISSIONS FULL",
+      "args": [
+        {
+          "name": "board",
+          "type": {
+            "kind": "record",
+            "tables": [
+              "boards"
+            ]
+          },
+          "optional": false
+        }
+      ]
+    },
+    {
+      "name": "fn::get_board_from_room",
+      "define": "DEFINE FUNCTION fn::get_board_from_room($name: string, $room: { id: record<electric_rooms> }) -> record<boards> { RETURN (SELECT VALUE id FROM ONLY boards WHERE name = $name AND room = $room.id LIMIT 1) } PERMISSIONS FULL",
+      "args": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "primitive",
+            "name": "string"
+          },
+          "optional": false
+        },
+        {
+          "name": "room",
+          "type": {
+            "kind": "unknown",
+            "source": "{ id: record<electric_rooms> }"
+          },
+          "optional": false
+        }
+      ],
+      "returns": {
+        "kind": "record",
+        "tables": [
+          "boards"
+        ]
+      }
+    }
+  ],
   "params": [],
   "analyzers": [],
   "accesses": [],
@@ -965,10 +1137,5 @@
   "sequences": [],
   "configs": [],
   "models": [],
-  "users": [
-    {
-      "name": "asdf",
-      "define": "DEFINE USER asdf ON DATABASE PASSHASH '[REDACTED]' ROLES VIEWER DURATION FOR TOKEN 1h, FOR SESSION NONE"
-    }
-  ]
+  "users": []
 }

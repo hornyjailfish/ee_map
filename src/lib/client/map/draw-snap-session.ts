@@ -14,7 +14,7 @@ import type { Coordinate } from 'ol/coordinate';
 import LineString from 'ol/geom/LineString';
 import Point from 'ol/geom/Point';
 import Polygon from 'ol/geom/Polygon';
-import type { SimpleGeometry } from 'ol/geom';
+import type { Geometry, SimpleGeometry } from 'ol/geom';
 import type { Type as GeometryType } from 'ol/geom/Geometry';
 import type Projection from 'ol/proj/Projection';
 import VectorLayer from 'ol/layer/Vector';
@@ -175,7 +175,7 @@ export class DrawSnapSession {
 
 		let best: XY | null = null;
 		for (const f of source.getFeatures()) {
-			const g = f.getGeometry();
+			const g: Geometry = f.getGeometry();
 			if (!g) continue;
 			const t = g.getType();
 			if (t === 'LineString') {

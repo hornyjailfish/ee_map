@@ -6,6 +6,7 @@
 import type { ElkNodeSize } from '$lib/transform/to-elk';
 import type { GraphCrudMeta } from '$lib/transform/graph-crud';
 import type { GraphEdge, GraphNode, GraphViewModel } from '$lib/transform/to-graph';
+import { withHandles } from '$lib/client/registries/nodes';
 
 /** Node + layout identity — used for `{#key}` remounts (camera reset OK). */
 export function graphStructureSignature(model: GraphViewModel): string {
@@ -79,7 +80,7 @@ export function withNodeUiFlags(data: GraphNode['data'], opts: GraphNodeUiOpts):
 export function toMeasureNodes(model: GraphViewModel, ui: GraphNodeUiOpts = {}): GraphNode[] {
 	return model.nodes.map((n) => {
 		const role = n.data.role;
-		const canWire = n.connectable === true || role === 'breaker' || role === 'output';
+		const canWire = n.connectable === true || withHandles.includes(role);
 		const { width: _w, height: _h, style: _s, measured: _m, ...rest } = n;
 		const node: GraphNode = {
 			...rest,
@@ -119,7 +120,7 @@ export function toLaidOutNodes(
 		const size = sizes?.get(n.id);
 		const isCompound = parents.has(n.id);
 		const role = n.data.role;
-		const canWire = n.connectable === true || role === 'breaker' || role === 'output';
+		const canWire = n.connectable === true || withHandles.includes(role);
 		const { width: _w, height: _h, style: _s, measured: _m, ...rest } = n;
 
 		const node: GraphNode = {

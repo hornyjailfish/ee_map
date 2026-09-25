@@ -15,7 +15,6 @@
 		if (!selectable) nodeUi.setSelectable(id, true);
 	}
 
-	$inspect(rest)
 </script>
 
 <!-- No handles: rooms are containers, not edge endpoints. -->

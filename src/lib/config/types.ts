@@ -8,7 +8,7 @@
 // ─── Shared unions ───────────────────────────────────────────────────────────
 
 /** Graph node roles assigned via overlay (never inferred from schema alone). */
-export type GraphRole = 'room' | 'board' | 'breaker' | 'output' | 'group' | 'ignore';
+export type GraphRole = 'room' | 'board' | 'breaker' | 'input' | 'output' | 'group' | 'ignore';
 
 /** Hierarchy order for graph layout; excludes `ignore`. */
 export type GraphHierarchyRole = Exclude<GraphRole, 'ignore'>;

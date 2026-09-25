@@ -11,6 +11,7 @@ import DefaultNode from '$lib/components/graph/nodes/DefaultNode.svelte';
 import GroupNode from '$lib/components/graph/nodes/GroupNode.svelte';
 import OutputNode from '$lib/components/graph/nodes/OutputNode.svelte';
 import RoomNode from '$lib/components/graph/nodes/RoomNode.svelte';
+import InputNode from '$lib/components/graph/nodes/InputNode.svelte';
 
 /**
  * Default map used by GraphView.
@@ -21,10 +22,13 @@ export const nodeTypes = {
 	room: RoomNode,
 	board: BoardNode,
 	breaker: BreakerNode,
+	input: InputNode,
 	output: OutputNode,
 	group: GroupNode,
 	default: DefaultNode,
 	entity: DefaultNode
 } satisfies NodeTypes;
+
+export const withHandles = ['input', 'output', 'breaker']
 
 export type RegisteredNodeType = keyof typeof nodeTypes;

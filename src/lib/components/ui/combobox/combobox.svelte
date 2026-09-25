@@ -156,7 +156,7 @@
 									value={option.id}
 									keywords={[text, option.label, option.group ?? '']}
 									onSelect={() => selectOption(option)}
-									class="group relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none select-none data-selected:bg-muted data-selected:text-foreground data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50"
+									class="group relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none select-none data-selected:bg-primary data-selected:text-primary-foreground data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50"
 								>
 									<span class="truncate">{text}</span>
 									{#if option.id === value}
