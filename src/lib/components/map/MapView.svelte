@@ -97,7 +97,6 @@
 	function featureToOl(mf: MapFeature): Feature | null {
 		const geom = normalizedToOl(mf.geometry);
 		if (!geom) return null;
-
 		const f = new Feature({ geometry: geom });
 		f.setId(mf.id);
 		f.set('styleKey', mf.styleKey);
@@ -180,12 +179,17 @@
 
 			const hit = map.forEachFeatureAtPixel(
 				evt.pixel,
-				(f) => f,
+				(f) => {
+				    const group =  f.get('layerGroup');
+					if (!group || group === 'background') return false;
+    				return f;
+				},
 				{
 					hitTolerance: 4,
 					layerFilter: (layer) => {
 						if (layer === draftLayer) return false;
 						const role = layer.get('role');
+						const group = layer.get('layerGroup');
 						return role !== 'snap-guides' && role !== 'extrude-highlight';
 					}
 				}
