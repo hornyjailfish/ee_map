@@ -144,29 +144,12 @@
 						No results found.
 					</CommandPrimitive.Empty>
 
-<<<<<<< HEAD
-				{#if groups}
-					{#each groups as group (group.key)}
-						<CommandPrimitive.Group value={group.key} class="overflow-hidden p-1">
-							<div class="px-2 py-1.5 text-xs font-medium text-muted-foreground" aria-hidden="true">
-								{group.label}
-							</div>
-							{#each group.options as option (option.id)}
-								{@const text = listText(option)}
-								<!-- value = id (unique); keywords = names only (ranked above id). -->
-								<CommandPrimitive.Item
-									value={option.id}
-									keywords={[text, option.label, option.group ?? '']}
-									onSelect={() => selectOption(option)}
-									class="group relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none select-none data-selected:bg-primary data-selected:text-primary-foreground data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50"
-=======
 					{#if groups}
 						{#each groups as group (group.key)}
 							<CommandPrimitive.Group value={group.key} class="overflow-hidden p-1">
 								<div
 									class="px-2 py-1.5 text-xs font-medium text-muted-foreground"
 									aria-hidden="true"
->>>>>>> feature/embedding-markers
 								>
 									{group.label}
 								</div>

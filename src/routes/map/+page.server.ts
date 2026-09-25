@@ -359,11 +359,8 @@ export const actions: Actions = {
 		try {
 			const entity = await resolveForMapWrite(locals, fetch, table, 'props');
 			await patchRecord(locals.session!, entity, id, values);
-<<<<<<< HEAD
-=======
 			// Editing a marker's description (or image) invalidates its stored vector.
 			await reembedMarkerAfterEdit(locals.session!, table, id, Object.keys(values));
->>>>>>> feature/embedding-markers
 			return { ok: true as const, id };
 		} catch (err) {
 			return failFromError(err);
@@ -395,8 +392,6 @@ export const actions: Actions = {
 		} catch (err) {
 			return failFromError(err);
 		}
-<<<<<<< HEAD
-=======
 	},
 
 	/**
@@ -467,7 +462,6 @@ export const actions: Actions = {
 		} catch (err) {
 			return failFromError(err);
 		}
->>>>>>> feature/embedding-markers
 	}
 };
 

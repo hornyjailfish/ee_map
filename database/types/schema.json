@@ -1,10 +1,6 @@
 {
   "version": 1,
-<<<<<<< HEAD
-  "generatedAt": "2026-09-25T06:22:09.5629334Z",
-=======
   "generatedAt": "2026-09-24T21:46:32.9420241Z",
->>>>>>> fix/map-smooth-vector-pan-zoom
   "namespace": "main",
   "database": "main",
   "tables": [
@@ -739,13 +735,6 @@
       "fields": [
         {
           "name": "geometry",
-<<<<<<< HEAD
-          "define": "DEFINE FIELD geometry ON levels TYPE geometry<multiline> | none PERMISSIONS FULL",
-          "type": {
-            "kind": "geometry",
-            "kinds": [
-              "multiline"
-=======
           "define": "DEFINE FIELD geometry ON levels TYPE geometry<multiline> | geometry<polygon> | none PERMISSIONS FULL",
           "type": {
             "kind": "union",
@@ -762,33 +751,13 @@
                   "polygon"
                 ]
               }
->>>>>>> fix/map-smooth-vector-pan-zoom
             ]
           },
           "optional": true,
           "flexible": false,
           "readonly": false,
           "hasDefault": false,
-<<<<<<< HEAD
-          "rawType": "geometry<multiline> | none"
-        },
-        {
-          "name": "geometry.*",
-          "define": "DEFINE FIELD geometry.* ON levels TYPE geometry<line> PERMISSIONS FULL",
-          "type": {
-            "kind": "geometry",
-            "kinds": [
-              "line"
-            ]
-          },
-          "optional": false,
-          "flexible": false,
-          "readonly": false,
-          "hasDefault": false,
-          "rawType": "geometry<line>"
-=======
           "rawType": "geometry<multiline> | geometry<polygon> | none"
->>>>>>> fix/map-smooth-vector-pan-zoom
         },
         {
           "name": "name",
@@ -1149,8 +1118,6 @@
           "boards"
         ]
       }
-<<<<<<< HEAD
-=======
     },
     {
       "name": "fn::get_tables",
@@ -1164,7 +1131,6 @@
         },
         "max": null
       }
->>>>>>> fix/map-smooth-vector-pan-zoom
     }
   ],
   "params": [],

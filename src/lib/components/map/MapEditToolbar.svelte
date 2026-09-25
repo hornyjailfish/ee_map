@@ -65,12 +65,9 @@
 
 	const targets = $derived(drawTargets ?? createTargets);
 	const hasTargets = $derived(targets.length > 0);
-<<<<<<< HEAD
 	/** Multi-target draw needs an explicit layer selection before the Draw tool can start. */
 	const needsTargetPick = $derived(targets.length > 1 && targetTable == null);
-=======
 	const hasPointTargets = $derived(pointTargets.length > 0);
->>>>>>> feature/embedding-markers
 	const drawReady = $derived(
 		canEdit && hasTargets && (!needsLevel || Boolean(levelId)) && !needsTargetPick && !disabled
 	);
