@@ -1,6 +1,10 @@
 {
   "version": 1,
+<<<<<<< HEAD
   "generatedAt": "2026-09-25T06:22:09.5629334Z",
+=======
+  "generatedAt": "2026-09-24T21:46:32.9420241Z",
+>>>>>>> fix/map-smooth-vector-pan-zoom
   "namespace": "main",
   "database": "main",
   "tables": [
@@ -735,17 +739,37 @@
       "fields": [
         {
           "name": "geometry",
+<<<<<<< HEAD
           "define": "DEFINE FIELD geometry ON levels TYPE geometry<multiline> | none PERMISSIONS FULL",
           "type": {
             "kind": "geometry",
             "kinds": [
               "multiline"
+=======
+          "define": "DEFINE FIELD geometry ON levels TYPE geometry<multiline> | geometry<polygon> | none PERMISSIONS FULL",
+          "type": {
+            "kind": "union",
+            "variants": [
+              {
+                "kind": "geometry",
+                "kinds": [
+                  "multiline"
+                ]
+              },
+              {
+                "kind": "geometry",
+                "kinds": [
+                  "polygon"
+                ]
+              }
+>>>>>>> fix/map-smooth-vector-pan-zoom
             ]
           },
           "optional": true,
           "flexible": false,
           "readonly": false,
           "hasDefault": false,
+<<<<<<< HEAD
           "rawType": "geometry<multiline> | none"
         },
         {
@@ -762,6 +786,9 @@
           "readonly": false,
           "hasDefault": false,
           "rawType": "geometry<line>"
+=======
+          "rawType": "geometry<multiline> | geometry<polygon> | none"
+>>>>>>> fix/map-smooth-vector-pan-zoom
         },
         {
           "name": "name",
@@ -1122,6 +1149,22 @@
           "boards"
         ]
       }
+<<<<<<< HEAD
+=======
+    },
+    {
+      "name": "fn::get_tables",
+      "define": "DEFINE FUNCTION fn::get_tables() -> array<string> { LET $info = (INFO FOR DATABASE); LET $out = []; FOR $table IN object::keys($info.tables) { LET $definition = $info.tables[$table]; LET $definition = string::words($definition); LET $filter = $definition.find_index('TYPE'); array::add($out, { name: $table, type: $definition[$filter + 1] }); }; RETURN $out; } COMMENT '' PERMISSIONS FULL",
+      "args": [],
+      "returns": {
+        "kind": "array",
+        "inner": {
+          "kind": "primitive",
+          "name": "string"
+        },
+        "max": null
+      }
+>>>>>>> fix/map-smooth-vector-pan-zoom
     }
   ],
   "params": [],

@@ -236,9 +236,12 @@
 		}
 	});
 
-	// Drop draw mode when level becomes "All" for level-scoped targets
+	// Drop draw mode when the layer picker no longer yields a target (draw needs a
+	// selected layer, or a floor level for level-scoped targets) — safety net behind
+	// the disabled Draw button.
 	$effect(() => {
-		if (tool === 'draw-polygon' && needsLevel && !levelId) {
+		if (tool !== 'draw-polygon') return;
+		if (!targetSpec || (needsLevel && !levelId)) {
 			tool = 'navigate';
 		}
 	});

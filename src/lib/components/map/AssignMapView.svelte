@@ -140,6 +140,8 @@
 			const vector = new VectorLayer({
 				source,
 				zIndex: 1,
+				updateWhileAnimating: true,
+				updateWhileInteracting: true,
 				style: (olFeature: FeatureLike) => {
 					const id = olFeature.getId();
 					const idStr = id != null ? String(id) : '';

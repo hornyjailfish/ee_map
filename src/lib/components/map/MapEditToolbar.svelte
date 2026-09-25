@@ -61,8 +61,10 @@
 
 	const targets = $derived(drawTargets ?? createTargets);
 	const hasTargets = $derived(targets.length > 0);
+	/** Multi-target draw needs an explicit layer selection before the Draw tool can start. */
+	const needsTargetPick = $derived(targets.length > 1 && targetTable == null);
 	const drawReady = $derived(
-		canEdit && hasTargets && (!needsLevel || Boolean(levelId)) && !disabled
+		canEdit && hasTargets && (!needsLevel || Boolean(levelId)) && !needsTargetPick && !disabled
 	);
 	const editReady = $derived(canEdit && canModifyFocused && !disabled);
 	const extrudeReady = $derived(canEdit && canExtrudeFocused && !disabled);
@@ -91,7 +93,7 @@
 				type="button"
 				size="sm"
 				variant={tool === 'navigate' ? 'default' : 'outline'}
-				disabled={disabled}
+				{disabled}
 				title="Select / pan"
 				onclick={() => setTool('navigate')}
 			>
@@ -105,11 +107,13 @@
 				disabled={!drawReady}
 				title={drawReady
 					? 'Draw polygon'
-					: needsLevel && !levelId
-						? 'Pick a level before drawing'
-						: hasTargets
-							? 'Select a target table'
-							: 'No drawable map layers'}
+					: !hasTargets
+						? 'No drawable map layers'
+						: needsTargetPick
+							? 'Select a target layer first'
+							: needsLevel && !levelId
+								? 'Pick a floor level before drawing'
+								: 'Draw polygon'}
 				onclick={() => setTool('draw-polygon')}
 			>
 				<LassoIcon class="size-3.5" data-icon="inline-start" />
@@ -143,7 +147,7 @@
 			</Button>
 		</ButtonGroup.Root>
 
-		{#if hasTargets && tool === 'draw-polygon'}
+		{#if hasTargets && (tool === 'navigate' || tool === 'draw-polygon')}
 			<div class="flex items-center gap-1.5">
 				<span class="text-xs text-muted-foreground">Layer</span>
 				<NativeSelect.Root

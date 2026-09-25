@@ -53,7 +53,7 @@ export interface Embeddings {
 
 export interface Levels {
 	id: RecordId<'levels'>;
-	geometry?: GeometryMultiLine;
+	geometry?: GeometryMultiLine | GeometryPolygon;
 	name: string;
 	ord: number;
 }

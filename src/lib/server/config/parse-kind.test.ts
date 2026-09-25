@@ -88,6 +88,32 @@ describe('parseFieldKind', () => {
 		});
 	});
 
+	it('merges geometry kinds across a top-level geometry union (levels floor plan)', () => {
+		expect(parseFieldKind('geometry<multiline> | geometry<polygon>')).toEqual({
+			type: 'geometry',
+			optional: false,
+			geometryKinds: ['multiline', 'polygon']
+		});
+		expect(parseFieldKind('geometry<multiline> | geometry<polygon> | none')).toEqual({
+			type: 'geometry',
+			optional: true,
+			geometryKinds: ['multiline', 'polygon']
+		});
+		expect(parseFieldKind('none | geometry<polygon> | geometry<multiline>')).toEqual({
+			type: 'geometry',
+			optional: true,
+			geometryKinds: ['polygon', 'multiline']
+		});
+	});
+
+	it('merges record targets across a union of records', () => {
+		expect(parseFieldKind('record<boards> | record<breakers>')).toEqual({
+			type: 'record',
+			optional: false,
+			recordTargets: ['boards', 'breakers']
+		});
+	});
+
 	/**
 	 * Live Surreal 3.2.4 STRUCTURE: DEFINE option<T> is emitted as `none | T`.
 	 * DEFINE T | none stays `T | none`. Both must parse identically as optional.
@@ -136,6 +162,12 @@ describe('parseFieldKind', () => {
 		// multi-type optional: first non-none arm wins
 		expect(parseFieldKind('none | string | int')).toEqual({ type: 'string', optional: true });
 		expect(parseFieldKind('option<string | int>')).toEqual({ type: 'string', optional: true });
+		// heterogeneous geometry + scalar keeps the first arm untouched
+		expect(parseFieldKind('geometry<polygon> | string')).toEqual({
+			type: 'geometry',
+			geometryKinds: ['polygon'],
+			optional: false
+		});
 	});
 
 	it('never leaves type as the literal "option"', () => {

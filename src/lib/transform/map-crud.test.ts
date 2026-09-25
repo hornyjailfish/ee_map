@@ -1,7 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import type { ResolvedConfig, ResolvedEntity, ResolvedField, ResolvedMapLayer } from '$lib/config/types';
+import type {
+	ResolvedConfig,
+	ResolvedEntity,
+	ResolvedField,
+	ResolvedMapLayer
+} from '$lib/config/types';
 import { DEFAULT_GRAPH_LAYOUT } from '$lib/config/merge';
-import { buildMapCrudMeta, drawKindsForField } from './map-crud';
+import { buildMapCrudMeta, drawKindsForField, withoutTables } from './map-crud';
 
 function field(name: string, type = 'string', extra: Partial<ResolvedField> = {}): ResolvedField {
 	return {
@@ -43,10 +48,12 @@ function layer(
 	};
 }
 
-function config(overrides: {
-	tables?: ResolvedEntity[];
-	layers?: ResolvedMapLayer[];
-} = {}): ResolvedConfig {
+function config(
+	overrides: {
+		tables?: ResolvedEntity[];
+		layers?: ResolvedMapLayer[];
+	} = {}
+): ResolvedConfig {
 	const tables = overrides.tables ?? [entity('rents'), entity('zones')];
 	const layers =
 		overrides.layers ??
@@ -55,28 +62,28 @@ function config(overrides: {
 			.map((t, i) => layer({ table: t.name, zIndex: i + 1, styleKey: t.name }));
 
 	return {
-			version: 1,
-			tables,
-			relations: [],
-			map: {
-				units: 'm',
-				plane: 'xy-meters',
-				levelsTable: 'levels',
-				levelOrderField: 'ord',
-				layers
-			},
-			search: { fieldsByTable: {} },
-			graph: {
-				hierarchy: ['room', 'board', 'breaker', 'output', 'group'],
-				layout: {
-					...DEFAULT_GRAPH_LAYOUT,
-					spacing: { ...DEFAULT_GRAPH_LAYOUT.spacing },
-					compoundPadding: { ...DEFAULT_GRAPH_LAYOUT.compoundPadding }
-				}
-			},
-			diagnostics: []
-		};
-	}
+		version: 1,
+		tables,
+		relations: [],
+		map: {
+			units: 'm',
+			plane: 'xy-meters',
+			levelsTable: 'levels',
+			levelOrderField: 'ord',
+			layers
+		},
+		search: { fieldsByTable: {} },
+		graph: {
+			hierarchy: ['room', 'board', 'breaker', 'output', 'group'],
+			layout: {
+				...DEFAULT_GRAPH_LAYOUT,
+				spacing: { ...DEFAULT_GRAPH_LAYOUT.spacing },
+				compoundPadding: { ...DEFAULT_GRAPH_LAYOUT.compoundPadding }
+			}
+		},
+		diagnostics: []
+	};
+}
 
 describe('drawKindsForField', () => {
 	it('defaults to polygon when kinds omitted', () => {
@@ -87,9 +94,9 @@ describe('drawKindsForField', () => {
 		expect(
 			drawKindsForField(field('geometry', 'geometry', { geometryKinds: ['polygon'] }))
 		).toEqual(['polygon']);
-		expect(drawKindsForField(field('geometry', 'geometry', { geometryKinds: ['point'] }))).toEqual(
-			['point']
-		);
+		expect(drawKindsForField(field('geometry', 'geometry', { geometryKinds: ['point'] }))).toEqual([
+			'point'
+		]);
 		expect(
 			drawKindsForField(field('geometry', 'geometry', { geometryKinds: ['polygon', 'point'] }))
 		).toEqual(['polygon', 'point']);
@@ -99,6 +106,12 @@ describe('drawKindsForField', () => {
 		expect(
 			drawKindsForField(field('geometry', 'geometry', { geometryKinds: ['multiline'] }))
 		).toEqual([]);
+	});
+
+	it('allows polygon alongside multiline (levels floor plan + hand-drawn footprint)', () => {
+		expect(
+			drawKindsForField(field('geometry', 'geometry', { geometryKinds: ['multiline', 'polygon'] }))
+		).toEqual(['polygon']);
 	});
 });
 
@@ -150,5 +163,14 @@ describe('buildMapCrudMeta', () => {
 		expect(meta.drawTargets.map((t) => t.table)).toEqual(['electric_rooms']);
 		expect(meta.byTable.electric_rooms?.canUpdate).toBe(true);
 		expect(meta.byTable.electric_rooms?.canCreate).toBe(false);
+	});
+
+	it('withoutTables strips owner-only tables from every index', () => {
+		const meta = buildMapCrudMeta(config());
+		const filtered = withoutTables(meta, new Set(['rents']));
+		expect(filtered.createTargets.map((t) => t.table)).toEqual(['zones']);
+		expect(filtered.drawTargets.map((t) => t.table)).toEqual(['zones']);
+		expect(filtered.byTable.rents).toBeUndefined();
+		expect(filtered.byTable.zones).toBeDefined();
 	});
 });

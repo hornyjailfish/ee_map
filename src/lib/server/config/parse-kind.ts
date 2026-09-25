@@ -175,6 +175,52 @@ function classifyPrimary(primary: string): Omit<AutoProfileField, 'name' | 'opti
 }
 
 /**
+ * Classify a whole union of non-`none` type arms, merging kind metadata when
+ * every arm is the same field type:
+ * - `geometry<multiline> | geometry<polygon>` → geometry with both kinds
+ * - `record<a> | record<b>` → record with both targets
+ * - mixed scalar arms (`string | int`) keep the first arm (existing behavior)
+ */
+function classifyUnion(exprs: string[]): Omit<AutoProfileField, 'name' | 'optional'> {
+	const classified = exprs.map((expr) => classifyPrimary(expr));
+	const first = classified[0]!;
+	if (classified.length <= 1) return first;
+
+	const type = first.type;
+	if (!classified.every((c) => c.type === type)) return first;
+
+	if (type === 'geometry') {
+		const kinds: string[] = [];
+		const seen = new Set<string>();
+		for (const c of classified) {
+			for (const kind of c.geometryKinds ?? []) {
+				if (!seen.has(kind)) {
+					seen.add(kind);
+					kinds.push(kind);
+				}
+			}
+		}
+		return kinds.length > 0 ? { type, geometryKinds: kinds } : { type };
+	}
+
+	if (type === 'record') {
+		const targets: string[] = [];
+		const seen = new Set<string>();
+		for (const c of classified) {
+			for (const target of c.recordTargets ?? []) {
+				if (!seen.has(target)) {
+					seen.add(target);
+					targets.push(target);
+				}
+			}
+		}
+		return targets.length > 0 ? { type, recordTargets: targets } : { type };
+	}
+
+	return first;
+}
+
+/**
  * Parse a Surreal type expression into AutoProfile field metadata (name filled by caller).
  *
  * Accepts STRUCTURE forms and DEFINE-equivalent spellings:
@@ -215,9 +261,9 @@ export function parseFieldKind(
 	}
 
 	const nonNone = arms.filter((a) => !isNoneLike(a.expr));
-	const primary = (nonNone[0] ?? arms[0])!.expr;
+	const primaryArms = (nonNone.length > 0 ? nonNone : arms).map((a) => a.expr);
 
-	const classified = classifyPrimary(primary);
+	const classified = classifyUnion(primaryArms);
 	return {
 		...classified,
 		optional
