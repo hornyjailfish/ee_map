@@ -40,6 +40,8 @@ export type MapCrudMeta = {
 	 * Powers the draw target picker and post-draw modal.
 	 */
 	drawTargets: MapEntityCrudSpec[];
+	/** Point-capable layers (create only) — marker dataset (e.g. `embeddings`). */
+	pointTargets: MapEntityCrudSpec[];
 	/** All map geometry tables keyed by name (create + update-capable). */
 	byTable: Record<string, MapEntityCrudSpec>;
 };
@@ -91,7 +93,11 @@ export function buildMapCrudMeta(config: ResolvedConfig): MapCrudMeta {
 
 	const createTargets = drawable.filter((s) => s.canCreate);
 
-	return { createTargets, drawTargets: drawable, byTable };
+	const pointTargets = Object.values(byTable)
+		.filter((s) => s.canCreate && s.drawKinds.includes('point'))
+		.sort((a, b) => a.zIndex - b.zIndex || a.table.localeCompare(b.table));
+
+	return { createTargets, drawTargets: drawable, pointTargets, byTable };
 }
 
 function resolveGeometryField(

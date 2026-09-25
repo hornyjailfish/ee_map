@@ -55,7 +55,11 @@ export function buildMapCrudMetaV2(config: ResolvedConfigV2): MapCrudMeta {
 
 	const createTargets = drawable.filter((s) => s.canCreate);
 
-	return { createTargets, drawTargets: drawable, byTable };
+	const pointTargets = Object.values(byTable)
+		.filter((s) => s.canCreate && s.drawKinds.includes('point'))
+		.sort((a, b) => a.zIndex - b.zIndex || a.table.localeCompare(b.table));
+
+	return { createTargets, drawTargets: drawable, pointTargets, byTable };
 }
 
 function resolveGeometryField(

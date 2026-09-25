@@ -13,8 +13,7 @@ INSERT IGNORE INTO app_config [
 		excludeTables: [
 			'__entity',
 			'__rollout',
-			'app_config',
-			'embeddings'
+			'app_config'
 		],
 		entities: {
 			electric_rooms: {
@@ -64,6 +63,13 @@ INSERT IGNORE INTO app_config [
 			shops: {
 				label: 'Shops',
 				display: { field: 'name' }
+			},
+			embeddings: {
+				label: 'Markers',
+				display: { field: 'description' },
+				table: {
+					order: ['description', 'level', 'zone', 'shop', 'marker', 'embedding_status']
+				}
 			},
 			levels: {
 				label: 'Levels',
@@ -140,6 +146,13 @@ INSERT IGNORE INTO app_config [
 					layerGroup: 'tenancy',
 					styleKey: 'rents',
 					zIndex: 20
+				},
+				embeddings: {
+					levelField: 'level',
+					geometryField: 'marker',
+					layerGroup: 'markers',
+					styleKey: 'point',
+					zIndex: 60
 				}
 			}
 		},

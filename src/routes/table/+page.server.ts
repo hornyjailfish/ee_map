@@ -16,6 +16,7 @@ import {
 } from '$lib/server/data';
 import { resolveAppConfig } from '$lib/server/config';
 import { getUserRoles } from '$lib/server/catalog';
+import { reembedMarkerAfterEdit } from '$lib/server/embedding';
 import { entityByName, toTable, type TableViewModel } from '$lib/transform/to-table';
 
 const updateCellSchema = z.object({
@@ -148,6 +149,8 @@ export const actions: Actions = {
 		try {
 			const entity = await resolveForWrite(locals, fetch, table);
 			await patchRecord(locals.session!, entity, id, { [field]: value });
+			// Editing a marker's description (or image) invalidates its stored vector.
+			await reembedMarkerAfterEdit(locals.session!, table, id, [field]);
 			return { ok: true };
 		} catch (error) {
 			return failFromError(error);
@@ -155,9 +158,7 @@ export const actions: Actions = {
 	},
 
 	addRow: async ({ request, locals, fetch }) => {
-		const parsed = addRowSchema.safeParse(
-			Object.fromEntries((await request.formData()).entries())
-		);
+		const parsed = addRowSchema.safeParse(Object.fromEntries((await request.formData()).entries()));
 		if (!parsed.success) {
 			return fail(400, { code: 'invalid_form', message: 'Invalid form data' });
 		}

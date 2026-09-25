@@ -45,10 +45,15 @@ export interface ElectricRooms {
 export interface Embeddings {
 	id: RecordId<'embeddings'>;
 	description?: string;
+	embedding_model?: string;
+	embedding_status?: string;
 	image?: string;
 	image_embedding?: number[];
+	level: RecordId<'levels'>;
 	marker: GeometryPoint;
+	shop?: RecordId<'shops'>;
 	text_embedding?: number[];
+	zone?: RecordId<'zones'>;
 }
 
 export interface Levels {
