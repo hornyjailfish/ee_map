@@ -10,27 +10,28 @@ Internal tool for an electrical engineering team. Three views over the same Surr
 
 ## Current state (repo)
 
-| Area                                                                   | Status                                                                 |
-| ---------------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| SvelteKit app, Tailwind, Vitest                                        | Done                                                                   |
-| Surreal session/auth, header Session dialog, NS catalog                | Done                                                                   |
-| SurrealKit (`database/`, `surrealkit.toml`)                            | Done                                                                   |
-| Barebone `DEFINE` schema + some seeds (`levels`, `electric_rooms`)     | Done                                                                   |
-| Typegen → `src/lib/types/` (SDK interfaces)                            | Done (regenerate after schema edits)                                   |
-| `app_config` overlay / merge / resolve                                 | **N1–N3 done** (merge + live resolve + seed)                           |
-| `AppUiState`, view nav, full-page chrome                               | **N4 done**                                                            |
-| `/table`, `/graph`, `/map`                                             | **N5–N8 done** + table writes (C1–C2 + C1.1) + graph wires/nodes (C3+) |
-| Shared focus (`appUi.focusedId`) across views                          | **N10 done**                                                           |
-| `/config` overlay editor (OWNER)                                       | **N12 done**                                                           |
-| `/map/assign` static GeoJSON → record geometry                         | **C4.0 done** (match assigned, search, hide)                           |
-| Floor-plan layer (`levels.geometry` MultiLine + optional `levelField`) | **C4.0b done** (schema/seed/to-map/OL)                                 |
-| In-map draw/create polygons on `/map`                                  | **C4.1a done** (tool modes + createFeature + assign-to-existing)       |
-| In-map vertex modify + CAD snap                                        | **C4.1b done** (ModifyVertexSession + updateGeometry)                  |
-| In-map edge extrude                                                    | **C4.1c done** (ModifyExtrudeSession; same save path as modify)        |
-| Clear geometry tool / draw-point                                       | **Leftover** (`MAP_FUTURE_TOOLS`; not blocking N13)                    |
-| Config: slim entities + view-scoped overlay (N13)                      | **In progress** — config layer (types/lift/merge/seed) done; see below |
-| Header search                                                          | **Deferred** (embedding service; no data yet)                          |
-| Map geometry painters / stamps (column, elevator, …)                   | **Deferred** (after N13; not in this pass)                             |
+| Area                                                                   | Status                                                                                                                    |
+| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| SvelteKit app, Tailwind, Vitest                                        | Done                                                                                                                      |
+| Surreal session/auth, header Session dialog, NS catalog                | Done                                                                                                                      |
+| SurrealKit (`database/`, `surrealkit.toml`)                            | Done                                                                                                                      |
+| Barebone `DEFINE` schema + some seeds (`levels`, `electric_rooms`)     | Done                                                                                                                      |
+| Typegen → `src/lib/types/` (SDK interfaces)                            | Done (regenerate after schema edits)                                                                                      |
+| `app_config` overlay / merge / resolve                                 | **N1–N3 done** (merge + live resolve + seed)                                                                              |
+| `AppUiState`, view nav, full-page chrome                               | **N4 done**                                                                                                               |
+| `/table`, `/graph`, `/map`                                             | **N5–N8 done** + table writes (C1–C2 + C1.1) + graph wires/nodes (C3+)                                                    |
+| Shared focus (`appUi.focusedId`) across views                          | **N10 done**                                                                                                              |
+| `/config` overlay editor (OWNER)                                       | **N12 done**                                                                                                              |
+| `/map/assign` static GeoJSON → record geometry                         | **C4.0 done** (match assigned, search, hide)                                                                              |
+| Floor-plan layer (`levels.geometry` MultiLine + optional `levelField`) | **C4.0b done** (schema/seed/to-map/OL)                                                                                    |
+| In-map draw/create polygons on `/map`                                  | **C4.1a done** (tool modes + createFeature + assign-to-existing)                                                          |
+| In-map vertex modify + CAD snap                                        | **C4.1b done** (ModifyVertexSession + updateGeometry)                                                                     |
+| In-map edge extrude                                                    | **C4.1c done** (ModifyExtrudeSession; same save path as modify)                                                           |
+| Clear geometry tool / draw-point                                       | **Leftover** (`MAP_FUTURE_TOOLS`; not blocking N13)                                                                       |
+| Config: slim entities + view-scoped overlay (N13)                      | **In progress** — config layer (types/lift/merge/seed) done; see below                                                    |
+| Header search                                                          | **Deferred** (embedding service; no data yet)                                                                             |
+| Embedding-search markers (editor, Phase A)                             | **Done** — `embeddings` point layer + draw-point marker tool + auto-gen level/zone/shop context + server-side embed proxy |
+| Map geometry painters / stamps (column, elevator, …)                   | **Deferred** (after N13; not in this pass)                                                                                |
 
 ---
 
@@ -663,7 +664,7 @@ Resolved entity + rows → to-table → { data, columns } → <Grid />
 
 | #   | Slice         | Why                                                                      |
 | --- | ------------- | ------------------------------------------------------------------------ |
-| N9  | Header search | Will call a separate embeddings service; domain rows have no vectors yet |
+| N9  | Header search | Embedding client landed (LM Studio proxy); search UI + ANN still pending |
 
 ### CRUD progress
 
@@ -845,7 +846,7 @@ App env (`SURREAL_URL`, WS) and kit env (`SURREALDB_HOST`, HTTP) may differ by p
 1. Confirm `connects` OUT to `rents` as the “output” story vs separate outputs table
 2. Whether `shops` ever appear on map (v1: table only — assign may still write rents)
 3. Floor-plan **image** fields on `levels` when raster assets exist (linework is `geometry` now)
-4. Embeddings service contract for N9 (fields, index, latency, auth)
+4. Embeddings service contract for N9 (fields, index, latency, auth) — **partially resolved**: LM Studio OpenAI-compatible proxy (`server/embedding/client.ts`), no auth, text+image separate. Still open: exact image payload for vLLM, vector index/ANN.
 5. Surreal permissions: ensure EDITOR can MERGE/CREATE/DELETE / RELATE on domain tables
 6. Composite FK sort keys (`sortKey` from display parts) when SVAR needs header multi-key
 7. Record `sort` default (config string) is client-side only — confirm SVAR header marks match on table reopen

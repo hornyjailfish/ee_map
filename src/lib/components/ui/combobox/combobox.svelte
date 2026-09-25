@@ -121,68 +121,73 @@
 		{/snippet}
 	</PopoverPrimitive.Trigger>
 
-	<PopoverPrimitive.Content
-		sideOffset={4}
-		align="start"
-		class="z-50 w-(--bits-popover-anchor-width) origin-(--transform-origin) rounded-lg bg-popover p-1 text-popover-foreground shadow-md ring-1 ring-foreground/10 outline-hidden"
-	>
-		<CommandPrimitive.Root
-			class="flex size-full flex-col overflow-hidden"
-			filter={comboboxCommandFilter}
+	<PopoverPrimitive.Portal>
+		<PopoverPrimitive.Content
+			sideOffset={4}
+			align="start"
+			class="z-50 w-(--bits-popover-anchor-width) origin-(--transform-origin) rounded-lg bg-popover p-1 text-popover-foreground shadow-md ring-1 ring-foreground/10 outline-hidden"
 		>
-			<div class="flex items-center gap-2 border-b border-border px-2.5">
-				<SearchIcon class="size-4 shrink-0 text-muted-foreground" />
-				<CommandPrimitive.Input
-					autofocus
-					class="h-8 w-full min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-					placeholder="Search…"
-				/>
-			</div>
-			<CommandPrimitive.List class="max-h-64 overflow-x-hidden overflow-y-auto p-1">
-				<CommandPrimitive.Empty class="py-6 text-center text-sm text-muted-foreground">
-					No results found.
-				</CommandPrimitive.Empty>
+			<CommandPrimitive.Root
+				class="flex size-full flex-col overflow-hidden"
+				filter={comboboxCommandFilter}
+			>
+				<div class="flex items-center gap-2 border-b border-border px-2.5">
+					<SearchIcon class="size-4 shrink-0 text-muted-foreground" />
+					<CommandPrimitive.Input
+						autofocus
+						class="h-8 w-full min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+						placeholder="Search…"
+					/>
+				</div>
+				<CommandPrimitive.List class="max-h-64 overflow-x-hidden overflow-y-auto p-1">
+					<CommandPrimitive.Empty class="py-6 text-center text-sm text-muted-foreground">
+						No results found.
+					</CommandPrimitive.Empty>
 
-				{#if groups}
-					{#each groups as group (group.key)}
-						<CommandPrimitive.Group value={group.key} class="overflow-hidden p-1">
-							<div class="px-2 py-1.5 text-xs font-medium text-muted-foreground" aria-hidden="true">
-								{group.label}
-							</div>
-							{#each group.options as option (option.id)}
-								{@const text = listText(option)}
-								<!-- value = id (unique); keywords = names only (ranked above id). -->
-								<CommandPrimitive.Item
-									value={option.id}
-									keywords={[text, option.label, option.group ?? '']}
-									onSelect={() => selectOption(option)}
-									class="group relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none select-none data-selected:bg-muted data-selected:text-foreground data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50"
+					{#if groups}
+						{#each groups as group (group.key)}
+							<CommandPrimitive.Group value={group.key} class="overflow-hidden p-1">
+								<div
+									class="px-2 py-1.5 text-xs font-medium text-muted-foreground"
+									aria-hidden="true"
 								>
-									<span class="truncate">{text}</span>
-									{#if option.id === value}
-										<CheckIcon class="ml-auto size-4 shrink-0 opacity-100" />
-									{/if}
-								</CommandPrimitive.Item>
-							{/each}
-						</CommandPrimitive.Group>
-					{/each}
-				{:else}
-					{#each options as option (option.id)}
-						{@const text = listText(option)}
-						<CommandPrimitive.Item
-							value={option.id}
-							keywords={[text, option.label]}
-							onSelect={() => selectOption(option)}
-							class="group relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none select-none data-selected:bg-muted data-selected:text-foreground data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50"
-						>
-							<span class="truncate">{text}</span>
-							{#if option.id === value}
-								<CheckIcon class="ml-auto size-4 shrink-0 opacity-100" />
-							{/if}
-						</CommandPrimitive.Item>
-					{/each}
-				{/if}
-			</CommandPrimitive.List>
-		</CommandPrimitive.Root>
-	</PopoverPrimitive.Content>
+									{group.label}
+								</div>
+								{#each group.options as option (option.id)}
+									{@const text = listText(option)}
+									<!-- value = id (unique); keywords = names only (ranked above id). -->
+									<CommandPrimitive.Item
+										value={option.id}
+										keywords={[text, option.label, option.group ?? '']}
+										onSelect={() => selectOption(option)}
+										class="group relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none select-none data-selected:bg-muted data-selected:text-foreground data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50"
+									>
+										<span class="truncate">{text}</span>
+										{#if option.id === value}
+											<CheckIcon class="ml-auto size-4 shrink-0 opacity-100" />
+										{/if}
+									</CommandPrimitive.Item>
+								{/each}
+							</CommandPrimitive.Group>
+						{/each}
+					{:else}
+						{#each options as option (option.id)}
+							{@const text = listText(option)}
+							<CommandPrimitive.Item
+								value={option.id}
+								keywords={[text, option.label]}
+								onSelect={() => selectOption(option)}
+								class="group relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none select-none data-selected:bg-muted data-selected:text-foreground data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50"
+							>
+								<span class="truncate">{text}</span>
+								{#if option.id === value}
+									<CheckIcon class="ml-auto size-4 shrink-0 opacity-100" />
+								{/if}
+							</CommandPrimitive.Item>
+						{/each}
+					{/if}
+				</CommandPrimitive.List>
+			</CommandPrimitive.Root>
+		</PopoverPrimitive.Content>
+	</PopoverPrimitive.Portal>
 </PopoverPrimitive.Root>

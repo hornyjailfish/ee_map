@@ -48,11 +48,20 @@ DEFINE FIELD level ON zones TYPE record<levels>;
 DEFINE FIELD geometry ON zones TYPE geometry<polygon>;
 
 
-DEFINE TABLE embeddings SCHEMAFULL;
+DEFINE TABLE embeddings SCHEMAFULL PERMISSIONS FULL;
+# Human-curated search text (editor edits the auto-generated draft).
 DEFINE FIELD description ON embeddings TYPE string | none;
-DEFINE FIELD text_embedding ON embeddings TYPE array<float> | none;
-DEFINE FIELD image_embedding ON embeddings TYPE array<float> | none;
+# Structured context used to auto-generate the description draft.
+# `level` is required: markers are floor-scoped and level-filtered on the map.
+DEFINE FIELD level ON embeddings TYPE record<levels>;
+DEFINE FIELD zone ON embeddings TYPE record<zones> | none;
+DEFINE FIELD shop ON embeddings TYPE record<shops> | none;
 DEFINE FIELD marker ON embeddings TYPE geometry<point>;
 DEFINE FIELD image ON embeddings TYPE string | none ASSERT $value IS NONE OR <regex> '^f"images:/.*"$' = $value;
+DEFINE FIELD text_embedding ON embeddings TYPE array<float> | none;
+DEFINE FIELD image_embedding ON embeddings TYPE array<float> | none;
+# Embedding bookkeeping: which model produced the vectors + compute status.
+DEFINE FIELD embedding_model ON embeddings TYPE string | none;
+DEFINE FIELD embedding_status ON embeddings TYPE string | none;
 
 # app_config lives in view_configs.surql (SCHEMALESS overlay document).

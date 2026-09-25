@@ -10,7 +10,7 @@ import type { AppConfigOverlay, AutoProfile } from './types';
 /** Mirrors database/seed/app_config.surql (keep in sync when seed changes). */
 export const EE_OVERLAY_SEED: AppConfigOverlay = {
 	version: 1,
-	excludeTables: ['__entity', '__rollout', 'app_config', 'embeddings'],
+	excludeTables: ['__entity', '__rollout', 'app_config'],
 	entities: {
 		electric_rooms: {
 			label: 'Electric rooms',
@@ -79,6 +79,20 @@ export const EE_OVERLAY_SEED: AppConfigOverlay = {
 			}
 		},
 		shops: { label: 'Shops', display: { field: 'name' } },
+		embeddings: {
+			label: 'Markers',
+			display: { field: 'description' },
+			graph: { role: 'ignore' },
+			map: {
+				enabled: true,
+				levelField: 'level',
+				geometryField: 'marker',
+				layerGroup: 'markers',
+				styleKey: 'point',
+				zIndex: 60
+			},
+			table: { order: ['description', 'level', 'zone', 'shop', 'marker', 'embedding_status'] }
+		},
 		levels: {
 			label: 'Levels',
 			display: { field: 'name' },
@@ -200,7 +214,13 @@ const eeAuto: AutoProfile = {
 		{
 			name: 'embeddings',
 			kind: 'normal',
-			fields: [{ name: 'marker', type: 'geometry', optional: false, geometryKinds: ['point'] }]
+			fields: [
+				{ name: 'description', type: 'string', optional: true },
+				{ name: 'level', type: 'record', optional: false, recordTargets: ['levels'] },
+				{ name: 'zone', type: 'record', optional: true, recordTargets: ['zones'] },
+				{ name: 'shop', type: 'record', optional: true, recordTargets: ['shops'] },
+				{ name: 'marker', type: 'geometry', optional: false, geometryKinds: ['point'] }
+			]
 		},
 		{
 			name: 'app_config',
@@ -216,11 +236,20 @@ const eeAuto: AutoProfile = {
 };
 
 describe('EE app_config seed → merge', () => {
-	it('excludes system + embeddings + app_config', () => {
+	it('excludes system + app_config (embeddings is now a marker layer)', () => {
 		const config = merge(eeAuto, EE_OVERLAY_SEED);
 		const names = config.tables.map((t) => t.name).sort();
 		expect(names).toEqual(
-			['boards', 'breakers', 'electric_rooms', 'levels', 'rents', 'shops', 'zones'].sort()
+			[
+				'boards',
+				'breakers',
+				'electric_rooms',
+				'embeddings',
+				'levels',
+				'rents',
+				'shops',
+				'zones'
+			].sort()
 		);
 		expect(config.relations.map((r) => r.name)).toEqual(['connects']);
 	});
@@ -251,7 +280,7 @@ describe('EE app_config seed → merge', () => {
 
 	it('builds map layers ordered by zIndex then table', () => {
 		const layers = merge(eeAuto, EE_OVERLAY_SEED).map.layers;
-		expect(layers.map((l) => l.table)).toEqual(['zones', 'electric_rooms', 'rents']);
+		expect(layers.map((l) => l.table)).toEqual(['zones', 'electric_rooms', 'rents', 'embeddings']);
 		expect(layers.find((l) => l.table === 'rents')).toMatchObject({
 			levelField: 'level',
 			geometryField: 'geometry',

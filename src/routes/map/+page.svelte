@@ -8,6 +8,7 @@
 	import MapView from '$lib/components/map/MapView.svelte';
 	import MapEditToolbar from '$lib/components/map/MapEditToolbar.svelte';
 	import DrawFeatureModal from '$lib/components/map/DrawFeatureModal.svelte';
+	import MarkerModal from '$lib/components/map/MarkerModal.svelte';
 	import FeaturePropertiesPanel from '$lib/components/map/FeaturePropertiesPanel.svelte';
 	import ViewLoadingOverlay from '$lib/components/view/ViewLoadingOverlay.svelte';
 	import { ApiError, postFormAction } from '$lib/client/http';
@@ -22,7 +23,9 @@
 	import type { AppRole } from '$lib/catalog-types';
 	import { canEdit } from '$lib/roles';
 	import type { MapFeature, NormalizedGeometry } from '$lib/transform/to-map';
+	import type { MarkerContextData } from '$lib/transform/marker';
 	import CircleAlertIcon from '@lucide/svelte/icons/circle-alert';
+	import InfoIcon from '@lucide/svelte/icons/info';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
@@ -37,6 +40,9 @@
 	const roleCanEdit = $derived(canEdit(userRoles));
 
 	const drawTargets = $derived(crud?.drawTargets ?? crud?.createTargets ?? []);
+	const pointTargets = $derived(crud?.pointTargets ?? []);
+	/** Single marker layer for the embedding dataset (defaults to first). */
+	const markerTarget = $derived(pointTargets.length > 0 ? pointTargets[0]! : null);
 
 	const featureCount = $derived(
 		view ? view.layers.reduce((sum, layer) => sum + layer.features.length, 0) : 0
@@ -89,6 +95,14 @@
 	let writeError = $state<string | null>(null);
 	let propsSubmitting = $state(false);
 	let propsError = $state<string | null>(null);
+
+	// ── Marker (embedding search dataset) state ────────────────────────
+	let markerOpen = $state(false);
+	let markerResolving = $state(false);
+	let markerSubmitting = $state(false);
+	let markerError = $state<string | null>(null);
+	let markerNotice = $state<string | null>(null);
+	let markerContext = $state<MarkerContextData | null>(null);
 
 	/** Pending geometry save after a vertex/edge drag (retry / cancel). */
 	type PendingModify = {
@@ -293,7 +307,31 @@
 	}
 
 	function onDrawEnd(geometry: WritableGeoJSON) {
-		if (!roleCanEdit || !targetSpec) {
+		if (!roleCanEdit) {
+			writeError = 'You do not have permission to edit';
+			tool = 'navigate';
+			return;
+		}
+
+		// Marker (point) → embedding dataset flow.
+		if (tool === 'draw-point') {
+			if (!levelId) {
+				writeError = 'Pick a floor level before placing markers';
+				tool = 'navigate';
+				return;
+			}
+			if (!markerTarget) {
+				writeError = 'No marker layer configured';
+				tool = 'navigate';
+				return;
+			}
+			writeError = null;
+			draftGeo = geometry;
+			void openMarker(geometry);
+			return;
+		}
+
+		if (!targetSpec) {
 			writeError = 'Select a target layer before drawing';
 			tool = 'navigate';
 			return;
@@ -307,6 +345,61 @@
 		draftGeo = geometry;
 		createError = null;
 		createOpen = true;
+	}
+
+	/** Resolve auto-generated context for the drawn point, then open the dialog. */
+	async function openMarker(geometry: WritableGeoJSON) {
+		markerOpen = true;
+		markerResolving = true;
+		markerError = null;
+		markerContext = null;
+		try {
+			const result = await postFormAction<{ context: MarkerContextData }>('resolveMarkerContext', {
+				point: JSON.stringify(geometry),
+				level: levelId ?? ''
+			});
+			markerContext = result.context;
+		} catch (err) {
+			markerError = formatWriteError(err, 'Failed to resolve marker context');
+		} finally {
+			markerResolving = false;
+		}
+	}
+
+	/** Persist the marker (description is editor-owned; context ids come from resolve). */
+	async function submitMarker(description: string, image: string | null = null) {
+		if (!markerTarget || !draftGeo || markerSubmitting) return;
+		try {
+			markerSubmitting = true;
+			markerError = null;
+			markerNotice = null;
+
+			const result = await postFormAction<{
+				id?: string;
+				embedding: 'pending' | 'done' | 'failed';
+			}>('createMarker', {
+				point: JSON.stringify(draftGeo),
+				level: levelId ?? '',
+				description,
+				zone: markerContext?.zoneId ?? '',
+				shop: markerContext?.shopId ?? '',
+				image
+			});
+
+			markerOpen = false;
+			draftGeo = null;
+			markerContext = null;
+			await invalidateAll();
+			if (result.id) appUi.focusRecord(result.id);
+			if (result.embedding === 'failed') {
+				markerNotice = 'Marker saved, but embedding failed — retry from the marker later.';
+			}
+			// Stay in marker mode to place more markers.
+		} catch (err) {
+			markerError = formatWriteError(err, 'Failed to save marker');
+		} finally {
+			markerSubmitting = false;
+		}
 	}
 
 	async function submitCreate(values: Record<string, string>) {
@@ -459,7 +552,7 @@
 
 	// Dialog cancel / dismiss discards the pending sketch
 	$effect(() => {
-		if (!createOpen && draftGeo && !createSubmitting) {
+		if (!createOpen && !markerOpen && draftGeo && !createSubmitting && !markerSubmitting) {
 			draftGeo = null;
 			createError = null;
 		}
@@ -526,13 +619,14 @@
 					bind:tool
 					bind:targetTable
 					{drawTargets}
+					{pointTargets}
 					{needsLevel}
 					{levelId}
 					{canModifyFocused}
 					{modifyBlockedReason}
 					{canExtrudeFocused}
 					{extrudeBlockedReason}
-					disabled={levelLoading || createOpen || modifyLocked}
+					disabled={levelLoading || createOpen || markerOpen || modifyLocked}
 				/>
 			</div>
 		{/if}
@@ -586,6 +680,16 @@
 				<CircleAlertIcon />
 				<Alert.Title>Map edit</Alert.Title>
 				<Alert.Description>{writeError}</Alert.Description>
+			</Alert.Root>
+		</div>
+	{/if}
+
+	{#if markerNotice}
+		<div class="shrink-0 px-4 pt-2">
+			<Alert.Root>
+				<InfoIcon />
+				<Alert.Title>Marker embedding</Alert.Title>
+				<Alert.Description>{markerNotice}</Alert.Description>
 			</Alert.Root>
 		</div>
 	{/if}
@@ -714,5 +818,16 @@
 		error={createError}
 		onCreate={submitCreate}
 		onAssign={submitAssign}
+	/>
+{/if}
+
+{#if roleCanEdit && markerTarget}
+	<MarkerModal
+		bind:open={markerOpen}
+		context={markerContext}
+		resolving={markerResolving}
+		submitting={markerSubmitting}
+		error={markerError}
+		onCreate={submitMarker}
 	/>
 {/if}

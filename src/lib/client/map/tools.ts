@@ -20,12 +20,17 @@ export type MapToolMode = (typeof MAP_TOOL_MODES)[number];
 export const MAP_ACTIVE_TOOLS = [
 	'navigate',
 	'draw-polygon',
+	'draw-point',
 	'modify',
 	'extrude'
 ] as const satisfies readonly MapToolMode[];
 
 /** @deprecated Prefer MAP_ACTIVE_TOOLS — create subset. */
-export const MAP_CREATE_TOOLS = ['navigate', 'draw-polygon'] as const satisfies readonly MapToolMode[];
+export const MAP_CREATE_TOOLS = [
+	'navigate',
+	'draw-polygon',
+	'draw-point'
+] as const satisfies readonly MapToolMode[];
 
 export type MapCreateTool = (typeof MAP_CREATE_TOOLS)[number];
 export type MapActiveTool = (typeof MAP_ACTIVE_TOOLS)[number];

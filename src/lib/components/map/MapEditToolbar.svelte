@@ -9,6 +9,7 @@
 	import PointerIcon from '@lucide/svelte/icons/mouse-pointer-2';
 	import LassoIcon from '@lucide/svelte/icons/lasso';
 	import ExpandIcon from '@lucide/svelte/icons/expand';
+	import MapPinIcon from '@lucide/svelte/icons/map-pin';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import * as ButtonGroup from '$lib/components/ui/button-group/index.js';
 	import * as NativeSelect from '$lib/components/ui/native-select/index.js';
@@ -21,6 +22,8 @@
 		tool?: MapToolMode;
 		/** Draw target tables (create and/or assign to existing). */
 		drawTargets?: MapEntityCrudSpec[];
+		/** Point-capable marker layers (embedding dataset). */
+		pointTargets?: MapEntityCrudSpec[];
 		/** @deprecated Prefer drawTargets. */
 		createTargets?: MapEntityCrudSpec[];
 		/** Selected target table for drawn geometries. */
@@ -46,6 +49,7 @@
 		canEdit = false,
 		tool = $bindable('navigate' as MapToolMode),
 		drawTargets,
+		pointTargets = [],
 		createTargets = [],
 		targetTable = $bindable(null as string | null),
 		needsLevel = false,
@@ -61,15 +65,18 @@
 
 	const targets = $derived(drawTargets ?? createTargets);
 	const hasTargets = $derived(targets.length > 0);
+	const hasPointTargets = $derived(pointTargets.length > 0);
 	const drawReady = $derived(
 		canEdit && hasTargets && (!needsLevel || Boolean(levelId)) && !disabled
 	);
+	const markerReady = $derived(canEdit && hasPointTargets && Boolean(levelId) && !disabled);
 	const editReady = $derived(canEdit && canModifyFocused && !disabled);
 	const extrudeReady = $derived(canEdit && canExtrudeFocused && !disabled);
 
 	function setTool(next: MapToolMode) {
 		if (!canEdit || disabled) return;
 		if (next === 'draw-polygon' && !drawReady) return;
+		if (next === 'draw-point' && !markerReady && tool !== 'draw-point') return;
 		if (next === 'modify' && !editReady && tool !== 'modify') return;
 		if (next === 'extrude' && !extrudeReady && tool !== 'extrude') return;
 		tool = next;
@@ -91,7 +98,7 @@
 				type="button"
 				size="sm"
 				variant={tool === 'navigate' ? 'default' : 'outline'}
-				disabled={disabled}
+				{disabled}
 				title="Select / pan"
 				onclick={() => setTool('navigate')}
 			>
@@ -114,6 +121,21 @@
 			>
 				<LassoIcon class="size-3.5" data-icon="inline-start" />
 				Draw
+			</Button>
+			<Button
+				type="button"
+				size="sm"
+				variant={tool === 'draw-point' ? 'default' : 'outline'}
+				disabled={!markerReady}
+				title={markerReady
+					? 'Place a search marker'
+					: !levelId
+						? 'Pick a level before placing markers'
+						: 'No marker layer configured'}
+				onclick={() => setTool('draw-point')}
+			>
+				<MapPinIcon class="size-3.5" data-icon="inline-start" />
+				Marker
 			</Button>
 			<Button
 				type="button"

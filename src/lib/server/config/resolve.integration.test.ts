@@ -123,8 +123,9 @@ describe('live resolveAppConfig', () => {
 		expect(overlay).not.toBeNull();
 		expect(overlay?.version).toBe(2);
 		expect(overlay?.excludeTables).toEqual(
-			expect.arrayContaining(['app_config', 'embeddings', '__entity', '__rollout'])
+			expect.arrayContaining(['app_config', '__entity', '__rollout'])
 		);
+		expect(overlay?.excludeTables).not.toContain('embeddings');
 		expect(overlay?.graph?.nodes?.breakers).toMatchObject({
 			role: 'breaker',
 			parentField: 'board'
@@ -149,14 +150,14 @@ describe('live resolveAppConfig', () => {
 			expect.arrayContaining(['electric_rooms', 'boards', 'breakers'])
 		);
 		expect(a.tables.map((t) => t.name)).not.toContain('app_config');
-		expect(a.tables.map((t) => t.name)).not.toContain('embeddings');
+		expect(a.tables.map((t) => t.name)).toContain('embeddings');
 		expect(a.tables.find((t) => t.name === 'breakers')?.graph).toMatchObject({
 			role: 'breaker',
 			parentField: 'board'
 		});
 		expect(a.relations.find((r) => r.name === 'connects')?.role).toBe('feeds');
 		expect(a.map.layers.map((l) => l.table)).toEqual(
-			expect.arrayContaining(['electric_rooms', 'rents', 'zones'])
+			expect.arrayContaining(['electric_rooms', 'rents', 'zones', 'embeddings'])
 		);
 		expect(a.map.units).toBe('m');
 		expect(a.graph.hierarchy).toContain('breaker');
