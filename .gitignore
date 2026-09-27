@@ -28,3 +28,4 @@ project.inlang/cache/
 *.db
 
 data/*
+!data/backups
