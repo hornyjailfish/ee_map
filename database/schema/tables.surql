@@ -43,7 +43,7 @@ DEFINE FIELD name ON transformers TYPE string;
 DEFINE FIELD room ON transformers TYPE record<electric_rooms>;
 
 # main graph for electric connections
-DEFINE TABLE connects TYPE RELATION IN breakers OUT breakers | rents SCHEMALESS PERMISSIONS FULL;
+DEFINE TABLE connects TYPE RELATION IN breakers | transformers OUT breakers | rents SCHEMALESS PERMISSIONS FULL;
 DEFINE FIELD cable ON connects TYPE string | none;
 
 # zones for description generation
