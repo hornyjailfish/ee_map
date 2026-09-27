@@ -8,7 +8,7 @@ import type { AppConfigOverlay } from '$lib/config/types';
 import { liftOverlayV1toV2 } from '$lib/config/overlay-io';
 
 const OVERLAY_TABLE = 'app_config';
-const OVERLAY_ID = 'main';
+const OVERLAY_ID = 'v2';
 
 /**
  * Select `app_config:main` and normalize to AppConfigOverlay | null.

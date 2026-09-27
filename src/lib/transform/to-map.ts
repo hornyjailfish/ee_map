@@ -262,6 +262,12 @@ function buildLayerView(
 	const features: MapFeature[] = [];
 
 	for (const row of rows) {
+	  // INFO: make sure proper style registred for different embedding statuses
+		// FIXME: default style
+    if (layer.table == 'embeddings') {
+      const styleMod = [layer.styleKey, row.embedding_status]
+      layer.styleKey = styleMod.join('_')
+    }
 		const geometry = normalizeGeometry(row[layer.geometryField]);
 		if (geometry.kind === 'empty') continue;
 

@@ -82,7 +82,7 @@ function pointStyle(
 				: stroke;
 		return new Style({
 			image: new CircleStyle({
-				radius: focused ? 7 : assigned ? 4 : 5,
+				radius: focused ? 5 : assigned ? 2 : 3,
 				fill: new Fill({ color: f }),
 				stroke: new Stroke({
 					color: s,
@@ -132,12 +132,37 @@ const styles: Record<string, MapStyleFactory> = {
 		'#15803d'
 	),
 	/** Generic points if a layer later uses them */
-			point: pointStyle(
-				'rgba(59, 130, 246, 0.7)',
-				'#1d4ed8',
-				'rgba(37, 99, 235, 0.95)',
-				'#1e3a8a'
-			),
+	point: pointStyle(
+		'rgba(59, 130, 246, 0.7)',
+		'#1d4ed8',
+		'rgba(37, 99, 235, 0.95)',
+		'#1e3a8a'
+	),
+	// default for embedding if no status exists
+		point_: pointStyle(
+			'rgba(59, 130, 246, 0.7)',
+			'#1d4ed8',
+			'rgba(37, 99, 235, 0.95)',
+			'#1e3a8a'
+		),
+		point_failed: pointStyle(
+			'oklch(0.577 0.245 27.325 / 70%)',
+			'oklch(0.577 0.245 27.325)',
+			'oklch(0.577 0.245 27.325 / 50%)',
+			'#1e3a8a'
+		),
+		point_pending: pointStyle(
+			'oklch(0.577 0.245 27.325 / 70%)',
+			'oklch(0.577 0.245 27.325)',
+			'oklch(0.577 0.245 27.325 / 50%)',
+			'#1e3a8a'
+		),
+		point_success: pointStyle(
+			'oklch(0.577 0.245 27.325 / 70%)',
+			'oklch(0.577 0.245 27.325)',
+			'oklch(0.577 0.245 27.325 / 50%)',
+			'#1e3a8a'
+		),
 			/** In-progress / pending draw sketch (C4.1 create) */
 			'draw-draft': polygonStyle(
 				'rgba(168, 85, 247, 0.28)',
