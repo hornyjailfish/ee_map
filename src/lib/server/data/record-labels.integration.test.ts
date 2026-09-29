@@ -11,7 +11,7 @@ import { entityByName, toTable } from '$lib/transform/to-table';
 import { queryEntities } from './query-entities';
 import { loadRecordLabels } from './record-labels';
 
-const url = env.SURREALDB_HOST ?? 'ws://127.0.0.1:8008/rpc';
+const url = env.HTTP_DB ?? 'http://127.0.0.1:8008/rpc';
 const namespace = env.SURREALDB_NAMESPACE ?? 'main';
 const database = env.SURREALDB_NAME ?? 'main';
 

@@ -27,7 +27,7 @@ export type DbSelection = {
 };
 
 export const dbConfig = {
-	url: env.SURREALDB_HOST ?? 'ws://127.0.0.1:8008/rpc',
+	url: env.HTTP_DB ?? 'http://127.0.0.1:8008/rpc',
 	namespace: env.SURREALDB_NAMESPACE ?? 'main',
 	database: env.SURREALDB_NAME ?? 'main'
 } as const;
