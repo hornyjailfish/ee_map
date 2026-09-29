@@ -15,7 +15,8 @@
 		"lint": "prettier --check .",
 		"format": "prettier --write .",
 		"test:unit": "vitest",
-		"test": "npm run test:unit -- --run"
+		"test": "npm run test:unit -- --run",
+		"companion": "python -m companion"
 	},
 	"devDependencies": {
 		"@inlang/paraglide-js": "^2.18.2",
