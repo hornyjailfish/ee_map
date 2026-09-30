@@ -69,4 +69,8 @@ DEFINE FIELD image_embedding ON embeddings TYPE array<float> | none;
 DEFINE FIELD embedding_model ON embeddings TYPE string | none;
 DEFINE FIELD embedding_status ON embeddings TYPE string | none;
 
+DEFINE TABLE queue_embeding_pipeline SCHEMAFULL PERMISSIONS FULL;
+DEFINE FIELD embedding_id ON queue_embeding_pipeline TYPE record<embeddings> | none;
+DEFINE FIELD status ON queue_embeding_pipeline TYPE 'pending' | 'processing' | 'failed' | 'done';
+
 # app_config lives in view_configs.surql (SCHEMALESS overlay document).
