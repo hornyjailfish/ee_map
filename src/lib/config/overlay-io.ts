@@ -1,10 +1,11 @@
 /**
  * Soft I/O helpers for AppConfigOverlay.
  *
- * Shape is intentionally loose while the overlay contract moves v1 → v2 (N13):
- * - Accept both v1 (nested `entities.*.graph/map`, top-level `edges`) and v2
- *   (`graph.nodes`, `map.layers`, `graph.edges`), lifting v1 → v2 on read
- * - `version: 2` is the written contract; v1 input is migrated transparently
+ * Shape is intentionally loose so the overlay contract can evolve (v1 → v2 → v3):
+ * - Accept v1 (nested `entities.*.graph/map`, top-level `edges`), v2
+ *   (`graph.nodes`, `map.layers`, `graph.edges`), and v3 (marker-split model),
+ *   lifting everything to v3 on read
+ * - `version: 3` is the written contract; older input is migrated transparently
  * - Keep known top-level buckets when they are plain objects / arrays
  * - Do **not** deep-reject unknown nested keys (pass-through for future fields)
  * - Soft-fail only on non-JSON / non-object roots
@@ -16,7 +17,7 @@ import type { AppConfigOverlay, EntityOverlay } from './types';
 export const OVERLAY_DOC_ID = 'app_config:main';
 
 /** Current written overlay contract version. */
-export const OVERLAY_VERSION = 2 as const;
+export const OVERLAY_VERSION = 3 as const;
 
 const sortKeySchema = z.object({ field: z.string(), dir: z.enum(['asc', 'desc']).optional() });
 const sortSchema = z.union([
@@ -46,7 +47,16 @@ const BUCKET_MESSAGES: Record<(typeof BUCKET_KEYS)[number], string> = {
  */
 const overlaySchema = z
 	.object({
-		version: z.union([z.literal(1), z.literal(2), z.literal('1'), z.literal('2')]).optional(),
+		version: z
+			.union([
+				z.literal(1),
+				z.literal(2),
+				z.literal(3),
+				z.literal('1'),
+				z.literal('2'),
+				z.literal('3')
+			])
+			.optional(),
 		excludeTables: stringListSchema.optional(),
 		entities: z.record(z.string(), z.unknown()).optional(),
 		edges: z.record(z.string(), z.unknown()).optional(),
@@ -131,19 +141,21 @@ export function softParseOverlay(raw: unknown): OverlayParseResult {
 		};
 	}
 
-	// Migrate v1 → v2 transparently: nested entities.*.graph/map + top-level edges
-	// become graph.nodes / map.layers / graph.edges; version normalizes to 2.
-	return { ok: true, overlay: liftOverlayV1toV2(parsed.data as Record<string, unknown>) };
+	// Migrate older shapes transparently: v1 nested entities.*.graph/map + top-level
+	// edges → v2 indexes, then the v2 → v3 marker-split model. Version normalizes to 3.
+	return { ok: true, overlay: liftOverlayToV3(parsed.data as Record<string, unknown>) };
 }
 
 /**
- * Pure v1 → v2 overlay migration (idempotent for already-v2 overlays).
+ * Pure v1/v2 → v3 overlay migration (idempotent for already-v3 overlays).
  * - `entities[t].graph` → `graph.nodes[t]` (drops `role: 'ignore'`)
  * - `entities[t].map` (enabled) → `map.layers[t]` (drops `enabled`, presence = active)
  * - top-level `edges` → `graph.edges`
- * - strips nested `graph` / `map` from entities; version → 2
+ * - strips nested `graph` / `map` from entities; version → 3
+ * - splits the legacy `embeddings` marker entity/layer into `markers` (geo + context)
+ *   and `marker_views` (userfacing description) canonical config
  */
-export function liftOverlayV1toV2(raw: Record<string, unknown>): AppConfigOverlay {
+export function liftOverlayToV3(raw: Record<string, unknown>): AppConfigOverlay {
 	// Spread first so unknown top-level keys (and unknown nested entity keys) pass through.
 	const overlay: Record<string, unknown> = { ...raw };
 	overlay.version = OVERLAY_VERSION;
@@ -212,16 +224,110 @@ export function liftOverlayV1toV2(raw: Record<string, unknown>): AppConfigOverla
 
 	if (!isPlainObject(raw.search)) delete overlay.search;
 
+	return migrateMarkerModel(overlay);
+}
+
+// ─── v3 marker-split model ──────────────────────────────────────────────────
+//
+// The embedding dataset used to live on one `embeddings` table (point + curated
+// description + vectors). In v3 it is split across:
+//   - `markers`      — metainfo (level/zone/closes_shop) + the point geometry
+//   - `marker_views` — userfacing description (+ vector holder, owned by the
+//                      separate embedding pipeline via `embedding_queue`)
+// These canonical entries are what the migration produces (and what the seed
+// writes) so stale `embeddings` config never re-enters resolution.
+
+const MARKERS_ENTITY = {
+	label: 'Markers',
+	// Dotted accessor: a marker labels itself through its level link.
+	display: { field: 'level.name' },
+	table: { order: ['level', 'zone', 'closes_shop', 'geometry'] }
+};
+
+const MARKER_VIEWS_ENTITY = {
+	label: 'Marker views',
+	display: { field: 'generated_description' },
+	table: {
+		order: ['user_description', 'marker', 'image_url', 'version'],
+		hide: ['text_embedding', 'image_embedding'],
+		readOnly: ['generated_description', 'version'],
+		sort: 'generated_description'
+	}
+};
+
+const MARKERS_LAYER = {
+	levelField: 'level',
+	geometryField: 'geometry',
+	layerGroup: 'markers',
+	styleKey: 'point',
+	zIndex: 60
+};
+
+const MARKER_VIEW_SEARCH_FIELDS = ['generated_description', 'user_description'];
+
+function hasOwn(obj: Record<string, unknown>, key: string): boolean {
+	return Object.prototype.hasOwnProperty.call(obj, key);
+}
+
+/**
+ * v2 → v3: replace the legacy `embeddings` marker config with the split
+ * `markers` + `marker_views` model. No-op unless the overlay carried an
+ * `embeddings` entity or map layer. Existing `markers` / `marker_views` keys
+ * are preserved so OWNER edits win over the canonical defaults.
+ */
+function migrateMarkerModel(overlay: Record<string, unknown>): AppConfigOverlay {
+	const entities = isPlainObject(overlay.entities) ? { ...overlay.entities } : {};
+	const mapRaw = isPlainObject(overlay.map) ? overlay.map : {};
+	const layers = isPlainObject(mapRaw.layers) ? { ...mapRaw.layers } : {};
+
+	const hadEmbeddingsEntity = hasOwn(entities, 'embeddings');
+	const hadEmbeddingsLayer = hasOwn(layers, 'embeddings');
+	if (!hadEmbeddingsEntity && !hadEmbeddingsLayer) {
+		return overlay as AppConfigOverlay;
+	}
+
+	delete entities.embeddings;
+	if (!hasOwn(entities, 'markers')) entities.markers = { ...MARKERS_ENTITY };
+	if (!hasOwn(entities, 'marker_views')) entities.marker_views = { ...MARKER_VIEWS_ENTITY };
+	overlay.entities = entities;
+
+	delete layers.embeddings;
+	if (!hasOwn(layers, 'markers')) layers.markers = { ...MARKERS_LAYER };
+	if (Object.keys(layers).length > 0) {
+		overlay.map = { ...mapRaw, layers };
+	} else {
+		const { layers: _ignored, ...rest } = mapRaw;
+		if (Object.keys(rest).length > 0) overlay.map = rest;
+		else delete overlay.map;
+	}
+
+	if (Array.isArray(overlay.excludeTables)) {
+		overlay.excludeTables = Array.from(
+			new Set([...overlay.excludeTables.filter((t) => t !== 'embeddings'), 'embedding_queue'])
+		);
+	}
+
+	if (isPlainObject(overlay.search)) {
+		const search: Record<string, unknown> = { ...overlay.search };
+		const fieldsByTable = isPlainObject(search.fieldsByTable) ? { ...search.fieldsByTable } : {};
+		delete fieldsByTable.embeddings;
+		if (!hasOwn(fieldsByTable, 'marker_views')) {
+			fieldsByTable.marker_views = [...MARKER_VIEW_SEARCH_FIELDS];
+		}
+		search.fieldsByTable = fieldsByTable;
+		overlay.search = search;
+	}
+
 	return overlay as AppConfigOverlay;
 }
 
 /**
- * Inverse of {@link liftOverlayV1toV2} for the OWNER editor (transitional bridge).
+ * Inverse of {@link liftOverlayToV3} for the OWNER editor (transitional bridge).
  * The editor still edits the nested v1 shape (`entities.*.graph/map`, top-level
- * `edges`); its output is lifted back to v2 on save. Purely structural — unknown
+ * `edges`); its output is lifted back to v3 on save. Purely structural — unknown
  * keys and `layoutOptions` pass through so nothing is lost on a round-trip.
  */
-export function overlayV2toV1(raw: AppConfigOverlay): AppConfigOverlay {
+export function overlayV3toV1(raw: AppConfigOverlay): AppConfigOverlay {
 	const overlay: Record<string, unknown> = { ...(raw as Record<string, unknown>) };
 	overlay.version = 1;
 

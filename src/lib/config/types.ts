@@ -35,7 +35,7 @@ export type FieldTypeName = string;
 // DB table is SCHEMALESS (view_configs.surql); seed uses INSERT IGNORE.
 
 export type AppConfigOverlay = {
-	version: 1 | 2;
+	version: 1 | 2 | 3;
 	/** Table names skipped entirely (in addition to /^__/ system tables). */
 	excludeTables?: string[];
 	/** key = table name — identity + grid presentation only (slim in v2). */
@@ -55,7 +55,9 @@ export type AppConfigOverlay = {
 /**
  * How an entity presents when referenced (table FK cells, pickers, …).
  * Prefer `parts` for composites; `field` is sugar for a single path on this row.
- * Paths may hop record links: `room.name` → this.room → that.name.
+ * Any path may be a dotted accessor that hops record links:
+ * `room.name` → this.room → that.name; `marker.zone.name` → two hops.
+ * Merge validates the first segment only; the rest resolves at runtime.
  */
 export type EntityDisplayOverlay = {
 	/** Single field on this entity (normalized to one part at merge). */
@@ -68,9 +70,9 @@ export type EntityDisplayOverlay = {
 
 /**
  * Entity overlay — identity + grid presentation.
- * In v2, graph / map participation lives on `graph.nodes.<table>` and
+ * In v3, graph / map participation lives on `graph.nodes.<table>` and
  * `map.layers.<table>`; the nested `graph` / `map` keys below are deprecated
- * v1 input that `liftOverlayV1toV2` migrates on read.
+ * v1 input that `liftOverlayToV3` migrates on read.
  */
 export type EntityOverlay = {
 	/** Display label for the entity (defaults to table name). */
@@ -132,7 +134,7 @@ export type FieldOverlay = {
 	 */
 	editor?: false | string;
 	width?: number;
-	/** Override target-entity display for this column only. */
+	/** Override target-entity display for this column only (accessors allowed: `zone.name`). */
 	display?: EntityDisplayOverlay;
 };
 
@@ -498,8 +500,8 @@ export type ResolvedGraph = {
 };
 
 export type ResolvedConfig = {
-	/** `2` once merge emits v2; `1` allowed only for pre-v2 fixtures. */
-	version: 1 | 2;
+	/** `3` once merge emits v3; `1`/`2` allowed only for pre-v3 fixtures. */
+	version: 1 | 2 | 3;
 	/**
 	 * Surreal engine used when this config was resolved (from introspect).
 	 * Omitted only when merge input had no engine (unit fixtures).

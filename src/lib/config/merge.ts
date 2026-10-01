@@ -25,7 +25,7 @@ import type {
 	TablePermissions,
 	TableSortKeyOverlay
 } from './types';
-import { liftOverlayV1toV2 } from './overlay-io';
+import { liftOverlayToV3 } from './overlay-io';
 
 const DEFAULT_HIERARCHY = ['room', 'board', 'breaker', 'output', 'group'] as const;
 const SYSTEM_TABLE = /^__/;
@@ -63,8 +63,8 @@ export const DEFAULT_GRAPH_LAYOUT: ResolvedGraphLayout = {
  * Pure — no I/O.
  */
 export function merge(auto: AutoProfile, overlay?: AppConfigOverlay | null): ResolvedConfig {
-	// Migrate v1 overlays (nested entities.*.graph/map, top-level edges) in place.
-	const ov = overlay ? liftOverlayV1toV2(overlay as unknown as Record<string, unknown>) : undefined;
+	// Migrate older overlays (v1 nested graph/map, v2, legacy embeddings) in place.
+	const ov = overlay ? liftOverlayToV3(overlay as unknown as Record<string, unknown>) : undefined;
 	const exclude = new Set(ov?.excludeTables ?? []);
 	const diagnostics: Diagnostic[] = [];
 
@@ -107,7 +107,7 @@ export function merge(auto: AutoProfile, overlay?: AppConfigOverlay | null): Res
 	}
 
 	const config: ResolvedConfig = {
-		version: 2,
+		version: 3,
 		tables,
 		relations,
 		map: {
@@ -318,6 +318,11 @@ function normalizeDisplayOverlay(
 	return undefined;
 }
 
+/** First dot-separated segment of a field path / accessor (e.g. `marker.zone.name` → `marker`). */
+function accessorRoot(path: string): string {
+	return path.split('.')[0]?.trim() ?? '';
+}
+
 /** Warn when the first path segment is not a known local field (hops beyond root are runtime). */
 function validateDisplayPathRoot(
 	path: string,
@@ -326,7 +331,7 @@ function validateDisplayPathRoot(
 	diagnostics: Diagnostic[]
 ): void {
 	if (!fieldNames) return;
-	const root = path.split('.')[0]?.trim() ?? '';
+	const root = accessorRoot(path);
 	if (!root) return;
 	if (!fieldNames.has(root)) {
 		diagnostics.push({
@@ -360,7 +365,8 @@ function resolveGraph(
 
 	if (graphOv.labelField !== undefined) {
 		graph.labelField = graphOv.labelField;
-		if (!fieldNames.has(graphOv.labelField)) {
+		// labelField may be a dotted accessor (`level.name`) — only the root must exist.
+		if (!fieldNames.has(accessorRoot(graphOv.labelField))) {
 			diagnostics.push({
 				level: 'warn',
 				code: 'missing_label_field',
@@ -371,7 +377,7 @@ function resolveGraph(
 
 	if (graphOv.subtitleField !== undefined) {
 		graph.subtitleField = graphOv.subtitleField;
-		if (!fieldNames.has(graphOv.subtitleField)) {
+		if (!fieldNames.has(accessorRoot(graphOv.subtitleField))) {
 			diagnostics.push({
 				level: 'warn',
 				code: 'missing_subtitle_field',

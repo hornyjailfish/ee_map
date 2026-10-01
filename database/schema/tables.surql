@@ -55,20 +55,32 @@ DEFINE FIELD geometry ON zones TYPE geometry<polygon>;
 DEFINE TABLE markers SCHEMAFULL PERMISSIONS FULL;
 DEFINE FIELD level ON markers TYPE record<levels>;
 DEFINE FIELD zone ON markers TYPE record<zones>;
-DEFINE FIELD closes_shop ON markers TYPE record<rents>;
+DEFINE FIELD closes_shop ON markers TYPE record<rents> | none;
+# The physical point on the indoor XY plane (map layer reads this).
+DEFINE FIELD geometry ON markers TYPE geometry<point>;
+
 
 DEFINE TABLE marker_views SCHEMAFULL PERMISSIONS FULL;
-DEFINE FIELD marker ON marker_views TYPE record<markers>;
+DEFINE FIELD marker ON marker_views TYPE record<markers> REFERENCE;
 DEFINE FIELD user_description ON marker_views TYPE string | none;
 DEFINE FIELD generated_description ON marker_views TYPE string VALUE
     IF user_description THEN string::join(', ', marker.level.name, marker.zone.name, user_description)
     ELSE string::join(', ', marker.level.name, marker.zone.name) END;
 DEFINE FIELD text_embedding ON marker_views TYPE array<float> | none;
 DEFINE FIELD image_embedding ON marker_views TYPE array<float> | none;
-DEFINE FIELD image_url ON marker_views TYPE string | none ASSERT $value IS NONE OR <regex> '^f"images:/.*"$' = $value;
+DEFINE FIELD image_url ON marker_views TYPE string | none ;
+# DEFINE FIELD image_url ON marker_views TYPE string | none ASSERT $value IS NONE OR <regex> '^f"images:/.*"$' = $value;
+-- СЧЕТЧИК ВЕРСИЙ: при любом реальном изменении текста/картинки число растет на 1
+DEFINE FIELD version ON marker_views TYPE int DEFAULT 1
+    VALUE IF $before == NONE THEN 1
+          ELSE IF $before.generated_description != $after.generated_description
+          OR $before.image_url != $after.image_url
+          THEN ($before.version OR 0) + 1
+          ELSE $before.version END;
 
 DEFINE TABLE embedding_queue SCHEMAFULL PERMISSIONS FULL;
 DEFINE FIELD data ON embedding_queue TYPE record<marker_views> | none;
+DEFINE FIELD version_snapshot ON embedding_queue TYPE int;
 DEFINE FIELD status ON embedding_queue TYPE 'pending' | 'processing' | 'failed' | 'done' DEFAULT 'pending';
 DEFINE FIELD error_message ON embedding_queue TYPE string | none;
 DEFINE FIELD updated_at ON embedding_queue VALUE time::now();

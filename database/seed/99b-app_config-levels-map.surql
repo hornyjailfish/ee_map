@@ -1,10 +1,10 @@
 --- SEED
 # Additive patch: enable levels floor-plan layer when overlay already exists (INSERT IGNORE skipped).
-# Safe to re-run — only touches entities.levels.map / table presentation fields.
+# Safe to re-run — only touches map.layers.levels / entities.levels.table presentation fields.
+# v3 shape: participation lives in map.layers.
 
 UPDATE app_config:main SET
-	entities.levels.map = {
-		enabled: true,
+	map.layers.levels = {
 		geometryField: 'geometry',
 		layerGroup: 'background',
 		styleKey: 'levels',

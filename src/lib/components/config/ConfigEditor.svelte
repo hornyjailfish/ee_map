@@ -23,7 +23,7 @@
 		softParseOverlay,
 		sortedKeys,
 		stringifyOverlay,
-		overlayV2toV1
+		overlayV3toV1
 	} from '$lib/config/overlay-io';
 	import * as Alert from '$lib/components/ui/alert/index.js';
 	import { Badge } from '$lib/components/ui/badge/index.js';
@@ -76,9 +76,9 @@
 	}: Props = $props();
 
 	// Parent remounts via {#key} when server overlay changes — capture once.
-	// The editor edits the nested v1 shape; v2 is downcast on load and lifted back
-	// to v2 by softParseOverlay on save (see overlayV2toV1 / liftOverlayV1toV2).
-	const initial = untrack(() => overlayV2toV1(cloneOverlay(initialOverlay) ?? emptyOverlay()));
+	// The editor edits the nested v1 shape; v3 is downcast on load and lifted back
+	// to v3 by softParseOverlay on save (see overlayV3toV1 / liftOverlayToV3).
+	const initial = untrack(() => overlayV3toV1(cloneOverlay(initialOverlay) ?? emptyOverlay()));
 	const initialJson = untrack(() => stringifyOverlay(initial));
 
 	/** Working draft — mutated via touchDraft / JSON apply / reset. */
@@ -155,7 +155,7 @@
 			jsonError = result.message;
 			return false;
 		}
-		draft = overlayV2toV1(result.overlay);
+		draft = overlayV3toV1(result.overlay);
 		jsonText = stringifyOverlay(draft);
 		jsonError = null;
 		return true;
@@ -486,7 +486,7 @@
 									oninput={(e) => setExcludeTables(e.currentTarget.value)}
 								/>
 								<Field.FieldDescription>
-									Typical: app_config, embeddings, __entity, __rollout
+									Typical: app_config, embedding_queue, __entity, __rollout
 								</Field.FieldDescription>
 							</Field.Field>
 						</Card.Content>
