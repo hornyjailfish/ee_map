@@ -21,12 +21,7 @@ import {
 import { buildMapCrudMeta, withoutTables, type MapCrudMeta } from '$lib/transform/map-crud';
 import { toMap, type MapFeature, type MapViewModel } from '$lib/transform/to-map';
 import { entityByName } from '$lib/transform/to-table';
-import {
-	createEmbeddingMarker,
-	reembedMarkerAfterEdit,
-	resolveMarkerContext,
-	type MarkerContext
-} from '$lib/server/embedding';
+import { createMarker, resolveMarkerContext, type MarkerContext } from '$lib/server/embedding';
 
 export type MapPageData = {
 	/** Active level filter from `?level=`; null = all levels. */
@@ -74,7 +69,7 @@ const createMarkerSchema = z.object({
 	level: z.string().default(''),
 	description: z.string().default(''),
 	zone: z.string().optional(),
-	shop: z.string().optional(),
+	rent: z.string().optional(),
 	image: z.string().optional()
 });
 
@@ -359,8 +354,6 @@ export const actions: Actions = {
 		try {
 			const entity = await resolveForMapWrite(locals, fetch, table, 'props');
 			await patchRecord(locals.session!, entity, id, values);
-			// Editing a marker's description (or image) invalidates its stored vector.
-			await reembedMarkerAfterEdit(locals.session!, table, id, Object.keys(values));
 			return { ok: true as const, id };
 		} catch (err) {
 			return failFromError(err);
@@ -425,9 +418,9 @@ export const actions: Actions = {
 	},
 
 	/**
-	 * Create an embedding-search marker: point + description (+ optional image),
-	 * with structured level/zone/shop context. Embedding computed server-side;
-	 * on service failure the marker still saves with `embedding_status: failed`.
+	 * Create an indoor search marker: point + level/zone/rent context on `markers`,
+	 * editor description on the linked `marker_views` row. Embedding generation is
+	 * handled by the separate pipeline (via `embedding_queue`).
 	 */
 	createMarker: async ({ request, locals, fetch }) => {
 		const form = Object.fromEntries((await request.formData()).entries()) as Record<string, string>;
@@ -450,15 +443,15 @@ export const actions: Actions = {
 			const roles = await getUserRoles(locals.selection.namespace, locals.user, fetch);
 			assertCanEdit(roles);
 
-			const result = await createEmbeddingMarker(locals.session, {
+			const result = await createMarker(locals.session, {
 				description: parsed.data.description,
 				levelId: parsed.data.level.trim(),
 				zoneId: parsed.data.zone?.trim() || null,
-				shopId: parsed.data.shop?.trim() || null,
+				rentId: parsed.data.rent?.trim() || null,
 				point,
 				image: parsed.data.image?.trim() || null
 			});
-			return { ok: true as const, id: result.id, embedding: result.status, error: result.error };
+			return { ok: true as const, id: result.id, viewId: result.viewId };
 		} catch (err) {
 			return failFromError(err);
 		}

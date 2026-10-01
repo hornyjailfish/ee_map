@@ -25,7 +25,6 @@
 	import type { MapFeature, NormalizedGeometry } from '$lib/transform/to-map';
 	import type { MarkerContextData } from '$lib/transform/marker';
 	import CircleAlertIcon from '@lucide/svelte/icons/circle-alert';
-	import InfoIcon from '@lucide/svelte/icons/info';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
@@ -101,7 +100,6 @@
 	let markerResolving = $state(false);
 	let markerSubmitting = $state(false);
 	let markerError = $state<string | null>(null);
-	let markerNotice = $state<string | null>(null);
 	let markerContext = $state<MarkerContextData | null>(null);
 
 	/** Pending geometry save after a vertex/edge drag (retry / cancel). */
@@ -375,17 +373,13 @@
 		try {
 			markerSubmitting = true;
 			markerError = null;
-			markerNotice = null;
 
-			const result = await postFormAction<{
-				id?: string;
-				embedding: 'pending' | 'done' | 'failed';
-			}>('createMarker', {
+			const result = await postFormAction<{ id?: string; viewId?: string }>('createMarker', {
 				point: JSON.stringify(draftGeo),
 				level: levelId ?? '',
 				description,
 				zone: markerContext?.zoneId ?? '',
-				shop: markerContext?.shopId ?? '',
+				rent: markerContext?.rentId ?? '',
 				image
 			});
 
@@ -394,9 +388,6 @@
 			markerContext = null;
 			await invalidateAll();
 			if (result.id) appUi.focusRecord(result.id);
-			if (result.embedding === 'failed') {
-				markerNotice = 'Marker saved, but embedding failed — retry from the marker later.';
-			}
 			// Stay in marker mode to place more markers.
 		} catch (err) {
 			markerError = formatWriteError(err, 'Failed to save marker');
@@ -683,16 +674,6 @@
 				<CircleAlertIcon />
 				<Alert.Title>Map edit</Alert.Title>
 				<Alert.Description>{writeError}</Alert.Description>
-			</Alert.Root>
-		</div>
-	{/if}
-
-	{#if markerNotice}
-		<div class="shrink-0 px-4 pt-2">
-			<Alert.Root>
-				<InfoIcon />
-				<Alert.Title>Marker embedding</Alert.Title>
-				<Alert.Description>{markerNotice}</Alert.Description>
 			</Alert.Root>
 		</div>
 	{/if}

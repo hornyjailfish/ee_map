@@ -16,7 +16,6 @@ import {
 } from '$lib/server/data';
 import { resolveAppConfig } from '$lib/server/config';
 import { getUserRoles } from '$lib/server/catalog';
-import { reembedMarkerAfterEdit } from '$lib/server/embedding';
 import { entityByName, toTable, type TableViewModel } from '$lib/transform/to-table';
 
 const updateCellSchema = z.object({
@@ -149,8 +148,6 @@ export const actions: Actions = {
 		try {
 			const entity = await resolveForWrite(locals, fetch, table);
 			await patchRecord(locals.session!, entity, id, { [field]: value });
-			// Editing a marker's description (or image) invalidates its stored vector.
-			await reembedMarkerAfterEdit(locals.session!, table, id, [field]);
 			return { ok: true };
 		} catch (error) {
 			return failFromError(error);

@@ -136,127 +136,180 @@
 </script>
 
 {#if recordId}
-	<aside
-		class="pointer-events-auto absolute top-2 right-2 z-30 flex max-h-[min(50vh,22rem)] w-[min(calc(100%-1rem),16.5rem)] flex-col overflow-hidden rounded-md border border-border bg-background/95 shadow-md backdrop-blur-sm"
-		aria-label="Feature properties"
+	<div
+		class="pointer-events-auto absolute top-2 right-2 z-30 flex max-h-[calc(100%-1rem)] w-[min(calc(100%-1rem),16.5rem)] flex-col gap-2 overflow-y-auto"
 	>
-		<header class="flex shrink-0 items-center gap-1 border-b border-border px-2 py-1.5">
-			<div class="min-w-0 flex-1">
-				{#if detail}
-					<p class="truncate text-xs leading-tight font-medium">{detail.title}</p>
-					<div class="mt-0.5 flex min-w-0 items-center gap-1">
-						<Badge variant="secondary" class="h-4 px-1.5 text-[10px]">{detail.tableLabel}</Badge>
-						<span class="truncate font-mono text-[10px] text-muted-foreground">{detail.id}</span>
-					</div>
-				{:else}
-					<p class="truncate text-xs font-medium">Record</p>
-					<p class="truncate font-mono text-[10px] text-muted-foreground">{recordId}</p>
-				{/if}
-			</div>
-			<div class="flex shrink-0 items-center">
-				{#if canUpdate && detail && !editing}
+		<aside
+			class="flex max-h-[min(50vh,22rem)] shrink-0 flex-col overflow-hidden rounded-md border border-border bg-background/95 shadow-md backdrop-blur-sm"
+			aria-label="Feature properties"
+		>
+			<header class="flex shrink-0 items-center gap-1 border-b border-border px-2 py-1.5">
+				<div class="min-w-0 flex-1">
+					{#if detail}
+						<p class="truncate text-xs leading-tight font-medium">{detail.title}</p>
+						<div class="mt-0.5 flex min-w-0 items-center gap-1">
+							<Badge variant="secondary" class="h-4 px-1.5 text-[10px]">{detail.tableLabel}</Badge>
+							<span class="truncate font-mono text-[10px] text-muted-foreground">{detail.id}</span>
+						</div>
+					{:else}
+						<p class="truncate text-xs font-medium">Record</p>
+						<p class="truncate font-mono text-[10px] text-muted-foreground">{recordId}</p>
+					{/if}
+				</div>
+				<div class="flex shrink-0 items-center">
+					{#if canUpdate && detail && !editing}
+						<Button
+							type="button"
+							variant="ghost"
+							size="icon"
+							class="size-6"
+							title="Edit properties"
+							aria-label="Edit properties"
+							disabled={submitting}
+							onclick={startEdit}
+						>
+							<PencilIcon class="size-3" />
+						</Button>
+					{/if}
 					<Button
 						type="button"
 						variant="ghost"
 						size="icon"
 						class="size-6"
-						title="Edit properties"
-						aria-label="Edit properties"
+						title="Close"
+						aria-label="Close properties"
 						disabled={submitting}
-						onclick={startEdit}
+						onclick={() => onClose?.()}
 					>
-						<PencilIcon class="size-3" />
+						<XIcon class="size-3" />
 					</Button>
-				{/if}
-				<Button
-					type="button"
-					variant="ghost"
-					size="icon"
-					class="size-6"
-					title="Close"
-					aria-label="Close properties"
-					disabled={submitting}
-					onclick={() => onClose?.()}
-				>
-					<XIcon class="size-3" />
-				</Button>
-			</div>
-		</header>
+				</div>
+			</header>
 
-		<div class="min-h-0 flex-1 overflow-y-auto px-2 py-1.5">
-			{#if !detail}
-				<p class="py-2 text-center text-[11px] text-muted-foreground">
-					{recordId ? 'Record not found or inaccessible' : 'No selection'}
-				</p>
-			{:else if editing && canUpdate}
-				{#if formFields.length === 0}
-					<p class="text-[11px] text-muted-foreground">No editable fields on this table.</p>
-				{:else}
-					<Field.Group class="gap-2">
-						{#each formFields as c (c.id)}
-							{@const editor = formEditorFor(c)}
-							{@const invalid = Boolean(fieldErrors[c.id])}
-							{#if editor}
-								<Field.Field class="gap-1" data-invalid={invalid ? 'true' : undefined}>
-									<Field.Label for={`map-prop-${c.id}`} class="text-[11px]">
-										{c.header}
-										{c.optional === false ? ' *' : ''}
-									</Field.Label>
-									<FormFieldControl
-										id={`map-prop-${c.id}`}
-										type={editor.type}
-										valueType={c.valueType}
-										value={values[c.id] ?? ''}
-										options={editor.options ?? []}
-										{invalid}
-										disabled={submitting}
-										onValueChange={(next) => {
-											values = { ...values, [c.id]: next };
-											if (fieldErrors[c.id]) fieldErrors = { ...fieldErrors, [c.id]: '' };
-										}}
-									/>
-									{#if invalid}
-										<Field.Error>{fieldErrors[c.id]}</Field.Error>
-									{/if}
-								</Field.Field>
-							{/if}
-						{/each}
-					</Field.Group>
-				{/if}
-			{:else}
-				<dl class="flex flex-col gap-0.5">
-					{#each viewFields as f (f.name)}
-						<div class="grid grid-cols-[5.5rem_minmax(0,1fr)] items-baseline gap-x-2 gap-y-0 py-0.5">
-							<dt class="truncate text-[10px] text-muted-foreground">{f.label}</dt>
-							<dd class="truncate text-xs text-foreground" title={displayText(f.display)}>
-								{displayText(f.display)}
-							</dd>
-						</div>
+			<div class="min-h-0 flex-1 overflow-y-auto px-2 py-1.5">
+				{#if !detail}
+					<p class="py-2 text-center text-[11px] text-muted-foreground">
+						{recordId ? 'Record not found or inaccessible' : 'No selection'}
+					</p>
+				{:else if editing && canUpdate}
+					{#if formFields.length === 0}
+						<p class="text-[11px] text-muted-foreground">No editable fields on this table.</p>
 					{:else}
-						<p class="text-[11px] text-muted-foreground">No properties on this record.</p>
-					{/each}
-				</dl>
-			{/if}
-		</div>
-
-		{#if error}
-			<div class="shrink-0 border-t border-border px-2 py-1.5">
-				<p class="text-[11px] text-destructive">{error}</p>
-			</div>
-		{/if}
-
-		{#if editing && canUpdate}
-			<footer class="flex shrink-0 items-center justify-end gap-1.5 border-t border-border px-2 py-1.5">
-				<Button type="button" variant="outline" size="sm" class="h-7 px-2 text-xs" disabled={submitting} onclick={cancelEdit}
-					>Cancel</Button
-				>
-				<Button type="button" size="sm" class="h-7 px-2 text-xs" disabled={submitting} onclick={handleSave}>
-					{#if submitting}
-						<Spinner class="size-3" data-icon="inline-start" />
+						<Field.Group class="gap-2">
+							{#each formFields as c (c.id)}
+								{@const editor = formEditorFor(c)}
+								{@const invalid = Boolean(fieldErrors[c.id])}
+								{#if editor}
+									<Field.Field class="gap-1" data-invalid={invalid ? 'true' : undefined}>
+										<Field.Label for={`map-prop-${c.id}`} class="text-[11px]">
+											{c.header}
+											{c.optional === false ? ' *' : ''}
+										</Field.Label>
+										<FormFieldControl
+											id={`map-prop-${c.id}`}
+											type={editor.type}
+											valueType={c.valueType}
+											value={values[c.id] ?? ''}
+											options={editor.options ?? []}
+											{invalid}
+											disabled={submitting}
+											onValueChange={(next) => {
+												values = { ...values, [c.id]: next };
+												if (fieldErrors[c.id]) fieldErrors = { ...fieldErrors, [c.id]: '' };
+											}}
+										/>
+										{#if invalid}
+											<Field.Error>{fieldErrors[c.id]}</Field.Error>
+										{/if}
+									</Field.Field>
+								{/if}
+							{/each}
+						</Field.Group>
 					{/if}
-					Save
-				</Button>
-			</footer>
-		{/if}
-	</aside>
+				{:else}
+					<dl class="flex flex-col gap-0.5">
+						{#each viewFields as f (f.name)}
+							<div
+								class="grid grid-cols-[5.5rem_minmax(0,1fr)] items-baseline gap-x-2 gap-y-0 py-0.5"
+							>
+								<dt class="truncate text-[10px] text-muted-foreground">{f.label}</dt>
+								<dd class="truncate text-xs text-foreground" title={displayText(f.display)}>
+									{displayText(f.display)}
+								</dd>
+							</div>
+						{:else}
+							<p class="text-[11px] text-muted-foreground">No properties on this record.</p>
+						{/each}
+					</dl>
+				{/if}
+			</div>
+
+			{#if error}
+				<div class="shrink-0 border-t border-border px-2 py-1.5">
+					<p class="text-[11px] text-destructive">{error}</p>
+				</div>
+			{/if}
+
+			{#if editing && canUpdate}
+				<footer
+					class="flex shrink-0 items-center justify-end gap-1.5 border-t border-border px-2 py-1.5"
+				>
+					<Button
+						type="button"
+						variant="outline"
+						size="sm"
+						class="h-7 px-2 text-xs"
+						disabled={submitting}
+						onclick={cancelEdit}>Cancel</Button
+					>
+					<Button
+						type="button"
+						size="sm"
+						class="h-7 px-2 text-xs"
+						disabled={submitting}
+						onclick={handleSave}
+					>
+						{#if submitting}
+							<Spinner class="size-3" data-icon="inline-start" />
+						{/if}
+						Save
+					</Button>
+				</footer>
+			{/if}
+		</aside>
+
+		{#each detail?.markerViews ?? [] as view (view.id)}
+			<aside
+				class="flex max-h-[min(40vh,16rem)] shrink-0 flex-col overflow-hidden rounded-md border border-border bg-background/95 shadow-md backdrop-blur-sm"
+				aria-label="Associated marker view"
+			>
+				<header class="flex shrink-0 items-center gap-1 border-b border-border px-2 py-1.5">
+					<div class="min-w-0 flex-1">
+						<p class="truncate text-xs leading-tight font-medium">{view.title}</p>
+						<div class="mt-0.5 flex min-w-0 items-center gap-1">
+							<Badge variant="secondary" class="h-4 px-1.5 text-[10px]">{view.tableLabel}</Badge>
+							<span class="truncate font-mono text-[10px] text-muted-foreground">{view.id}</span>
+						</div>
+					</div>
+				</header>
+
+				<div class="min-h-0 flex-1 overflow-y-auto px-2 py-1.5">
+					<dl class="flex flex-col gap-0.5">
+						{#each view.fields.filter((f) => f.name !== 'id') as f (f.name)}
+							<div
+								class="grid grid-cols-[5.5rem_minmax(0,1fr)] items-baseline gap-x-2 gap-y-0 py-0.5"
+							>
+								<dt class="truncate text-[10px] text-muted-foreground">{f.label}</dt>
+								<dd class="truncate text-xs text-foreground" title={displayText(f.display)}>
+									{displayText(f.display)}
+								</dd>
+							</div>
+						{:else}
+							<p class="text-[11px] text-muted-foreground">No properties on this record.</p>
+						{/each}
+					</dl>
+				</div>
+			</aside>
+		{/each}
+	</div>
 {/if}

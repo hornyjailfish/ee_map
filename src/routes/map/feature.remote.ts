@@ -4,6 +4,7 @@
 import { getRequestEvent, query } from '$app/server';
 import { error } from '@sveltejs/kit';
 import { z } from 'zod';
+import type { Surreal } from 'surrealdb';
 import type { ResolvedConfig, ResolvedEntity, ResolvedField } from '$lib/config/types';
 import { canEdit } from '$lib/roles';
 import { getUserRoles } from '$lib/server/catalog';
@@ -18,7 +19,12 @@ import {
 	type RecordOption
 } from '$lib/server/data';
 import { formatRecordCellValue } from '$lib/transform/record-label';
-import { buildColumns, displayValue, entityByName, normalizeRecordId } from '$lib/transform/to-table';
+import {
+	buildColumns,
+	displayValue,
+	entityByName,
+	normalizeRecordId
+} from '$lib/transform/to-table';
 import type { MapFeatureFieldView, MapFeatureRecordDetail } from './feature-types';
 
 export type { MapFeatureFieldView, MapFeatureRecordDetail } from './feature-types';
@@ -130,8 +136,61 @@ function buildDetail(
 }
 
 /**
+ * Load every `marker_views` row that references a given `markers` record.
+ * Uses SurrealDB v3 record references: `marker_views.marker` is declared
+ * `record<markers> REFERENCE`, so the inverse reference is selected with
+ * `<~marker_views.*` (the `.*` unpacks the full rows, otherwise the backlink
+ * returns record ids only). `type::record` casts the `table:key` string.
+ */
+async function loadMarkerViews(
+	session: Surreal,
+	config: ResolvedConfig,
+	markerId: string,
+	roleCanEdit: boolean
+): Promise<MapFeatureRecordDetail[]> {
+	const viewEntity = entityByName(config, 'marker_views');
+	if (!viewEntity) return [];
+
+	let rows: Record<string, unknown>[] = [];
+	try {
+		const result = await session.query<Record<string, unknown>[][]>(
+			'SELECT *, <~marker_views.* AS views FROM markers WHERE id = type::record($id)',
+			{ id: markerId }
+		);
+		const first = Array.isArray(result) ? result[0] : null;
+		const markerRow = Array.isArray(first) && first.length > 0 ? first[0] : null;
+		const views = markerRow ? (markerRow as Record<string, unknown>).views : null;
+		if (Array.isArray(views)) {
+			rows = views as Record<string, unknown>[];
+		}
+	} catch (err) {
+		const message = err instanceof Error ? err.message : 'marker views failed';
+		console.warn('[map] loadMarkerViews:', message);
+		return [];
+	}
+
+	if (rows.length === 0) return [];
+
+	try {
+		const { labels, store } = await loadRecordLabels(session, config, viewEntity, rows);
+		return rows
+			.map((row) => {
+				const id = normalizeRecordId(row.id);
+				if (!id) return null;
+				return buildDetail(config, viewEntity, row, id, roleCanEdit, labels, store, {});
+			})
+			.filter((detail): detail is MapFeatureRecordDetail => detail != null);
+	} catch (err) {
+		const message = err instanceof Error ? err.message : 'marker views labels failed';
+		console.warn('[map] loadMarkerViews labels:', message);
+		return [];
+	}
+}
+
+/**
  * Load one domain record for the map properties overlay.
  * Resolves multi-hop FK labels; loads picker options when the user can edit.
+ * For `markers` records also attaches the referencing `marker_views` rows.
  */
 export const getMapFeatureRecord = query(
 	z.object({
@@ -194,7 +253,7 @@ export const getMapFeatureRecord = query(
 			}
 		}
 
-		return buildDetail(
+		const detail = buildDetail(
 			config,
 			entity,
 			row,
@@ -204,5 +263,11 @@ export const getMapFeatureRecord = query(
 			store,
 			recordOptions
 		);
+
+		if (entity.name === 'markers') {
+			detail.markerViews = await loadMarkerViews(locals.session, config, normalizedId, roleCanEdit);
+		}
+
+		return detail;
 	}
 );

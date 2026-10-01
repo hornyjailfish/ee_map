@@ -38,4 +38,10 @@ export type MapFeatureRecordDetail = {
 	editFields: TableColumn[];
 	/** FK picker options by field name (empty when viewer / no links). */
 	recordOptions: Record<string, SelectOption[]>;
+	/**
+	 * Records that reference this one via SurrealDB v3 record references
+	 * (e.g. every `marker_views` row whose `marker` points back at a `markers` row).
+	 * Populated for the map properties overlay; empty/absent for other records.
+	 */
+	markerViews?: MapFeatureRecordDetail[];
 };
