@@ -112,7 +112,7 @@ describe('live resolveAppConfig', () => {
 		const connects = auto.tables.find((t) => t.name === 'connects');
 		expect(connects).toMatchObject({
 			kind: 'relation',
-			in: ['breakers'],
+			in: expect.arrayContaining(['breakers', 'transformers']),
 			out: expect.arrayContaining(['breakers', 'rents'])
 		});
 	});
@@ -121,7 +121,7 @@ describe('live resolveAppConfig', () => {
 		if (!available || !session) skip();
 		const overlay = await loadOverlay(session!);
 		expect(overlay).not.toBeNull();
-		expect(overlay?.version).toBe(2);
+		expect(overlay?.version).toBe(3);
 		expect(overlay?.excludeTables).toEqual(
 			expect.arrayContaining(['app_config', '__entity', '__rollout'])
 		);
@@ -144,20 +144,22 @@ describe('live resolveAppConfig', () => {
 		invalidateConfigCache();
 
 		const a = await resolveAppConfig(session!, { skipCache: true });
-		expect(a.version).toBe(2);
+		expect(a.version).toBe(3);
 		expect(a.engine?.major).toEqual(expect.any(Number));
 		expect(a.tables.map((t) => t.name)).toEqual(
 			expect.arrayContaining(['electric_rooms', 'boards', 'breakers'])
 		);
 		expect(a.tables.map((t) => t.name)).not.toContain('app_config');
-		expect(a.tables.map((t) => t.name)).toContain('embeddings');
+		expect(a.tables.map((t) => t.name)).toContain('markers');
+		expect(a.tables.map((t) => t.name)).toContain('marker_views');
+		expect(a.tables.map((t) => t.name)).not.toContain('embedding_queue');
 		expect(a.tables.find((t) => t.name === 'breakers')?.graph).toMatchObject({
 			role: 'breaker',
 			parentField: 'board'
 		});
 		expect(a.relations.find((r) => r.name === 'connects')?.role).toBe('feeds');
 		expect(a.map.layers.map((l) => l.table)).toEqual(
-			expect.arrayContaining(['electric_rooms', 'rents', 'zones', 'embeddings'])
+			expect.arrayContaining(['electric_rooms', 'rents', 'zones', 'markers'])
 		);
 		expect(a.map.units).toBe('m');
 		expect(a.graph.hierarchy).toContain('breaker');
