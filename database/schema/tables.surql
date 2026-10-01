@@ -52,25 +52,25 @@ DEFINE FIELD name ON zones TYPE string;
 DEFINE FIELD level ON zones TYPE record<levels>;
 DEFINE FIELD geometry ON zones TYPE geometry<polygon>;
 
+DEFINE TABLE markers SCHEMAFULL PERMISSIONS FULL;
+DEFINE FIELD level ON markers TYPE record<levels>;
+DEFINE FIELD zone ON markers TYPE record<zones>;
+DEFINE FIELD closes_shop ON markers TYPE record<rents>;
 
-DEFINE TABLE embeddings SCHEMAFULL PERMISSIONS FULL;
-# Human-curated search text (editor edits the auto-generated draft).
-DEFINE FIELD description ON embeddings TYPE string | none;
-# Structured context used to auto-generate the description draft.
-# `level` is required: markers are floor-scoped and level-filtered on the map.
-DEFINE FIELD level ON embeddings TYPE record<levels>;
-DEFINE FIELD zone ON embeddings TYPE record<zones> | none;
-DEFINE FIELD shop ON embeddings TYPE record<shops> | none;
-DEFINE FIELD marker ON embeddings TYPE geometry<point>;
-DEFINE FIELD image ON embeddings TYPE string | none ASSERT $value IS NONE OR <regex> '^f"images:/.*"$' = $value;
-DEFINE FIELD text_embedding ON embeddings TYPE array<float> | none;
-DEFINE FIELD image_embedding ON embeddings TYPE array<float> | none;
-# Embedding bookkeeping: which model produced the vectors + compute status.
-DEFINE FIELD embedding_model ON embeddings TYPE string | none;
-DEFINE FIELD embedding_status ON embeddings TYPE string | none;
+DEFINE TABLE marker_views SCHEMAFULL PERMISSIONS FULL;
+DEFINE FIELD marker ON marker_views TYPE record<markers>;
+DEFINE FIELD user_description ON marker_views TYPE string | none;
+DEFINE FIELD generated_description ON marker_views TYPE string VALUE
+    IF user_description THEN string::join(', ', marker.level.name, marker.zone.name, user_description)
+    ELSE string::join(', ', marker.level.name, marker.zone.name) END;
+DEFINE FIELD text_embedding ON marker_views TYPE array<float> | none;
+DEFINE FIELD image_embedding ON marker_views TYPE array<float> | none;
+DEFINE FIELD image_url ON marker_views TYPE string | none ASSERT $value IS NONE OR <regex> '^f"images:/.*"$' = $value;
 
-DEFINE TABLE queue_embeding_pipeline SCHEMAFULL PERMISSIONS FULL;
-DEFINE FIELD embedding_id ON queue_embeding_pipeline TYPE record<embeddings> | none;
-DEFINE FIELD status ON queue_embeding_pipeline TYPE 'pending' | 'processing' | 'failed' | 'done';
+DEFINE TABLE embedding_queue SCHEMAFULL PERMISSIONS FULL;
+DEFINE FIELD data ON embedding_queue TYPE record<marker_views> | none;
+DEFINE FIELD status ON embedding_queue TYPE 'pending' | 'processing' | 'failed' | 'done' DEFAULT 'pending';
+DEFINE FIELD error_message ON embedding_queue TYPE string | none;
+DEFINE FIELD updated_at ON embedding_queue VALUE time::now();
 
 # app_config lives in view_configs.surql (SCHEMALESS overlay document).

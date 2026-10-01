@@ -33,3 +33,13 @@ DEFINE INDEX unique_trans_name
 DEFINE INDEX one_edge
     ON connects FIELDS in, out
     UNIQUE;
+
+DEFINE INDEX unique_marker_data
+    ON embedding_queue FIELDS data
+    UNIQUE;
+
+# embedding indexes dimension uncompressed jinav5
+DEFINE INDEX idx_text
+    ON marker_views COLUMNS text_embedding HNSW DIMENSION 768 DIST COSINE;
+DEFINE INDEX idx_image
+    ON marker_views COLUMNS image_embedding HNSW DIMENSION 768 DIST COSINE;
