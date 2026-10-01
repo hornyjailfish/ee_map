@@ -1,7 +1,7 @@
 /**
  * Serializable marker context shared by server resolve + client marker modal.
- * Mirrors the auto-generated description parts (level · zone · shop) and the
- * structured ids persisted on the `embeddings` row.
+ * Holds the structured ids persisted on the `markers` row plus the human-readable
+ * level / zone / shop names used for the modal badge.
  */
 
 export type MarkerContextData = {
@@ -13,5 +13,4 @@ export type MarkerContextData = {
 	rentName: string | null;
 	shopId: string | null;
 	shopName: string | null;
-	draftDescription: string;
 };

@@ -1,13 +1,14 @@
 /**
- * Resolve marker context for the auto-generated description draft.
+ * Resolve marker context for the modal badge + the structured links stored on
+ * the `markers` row.
  *
  * Given a marker point (metric XY) and a level id, find:
- *   - the `zones` polygon containing the point  → zone name
+ *   - the `zones` polygon containing the point  → zone name / id
  *   - the `rents` polygon containing the point  → the `shops` brand that rents it
  *
- * The composed `draftDescription` pre-fills the marker editor; the editor owns the
- * final `description` text. Structured ids (`zoneId`, `shopId`, `rentId`) are also
- * returned so they can be persisted on the marker for later re-generation.
+ * Returns human-readable names (for the badge) plus the ids to persist as
+ * `markers.zone` / `markers.closes_shop` links. The editor writes the final
+ * `user_description` itself — no description text is generated here.
  */
 
 import type { Surreal } from 'surrealdb';
@@ -91,25 +92,11 @@ export async function resolveMarkerContext(
 	// Brand that rents this area: shops.area → rents (unique index on area).
 	let shopId: string | null = null;
 	let shopName: string | null = null;
-	/** Shop name + aliases (deduped) folded into the draft so alternate names are searchable. */
-	const shopTerms: string[] = [];
 	if (rentId) {
 		for (const shop of shopsRows) {
 			if (normalizeRecordId(shop.area) === rentId) {
 				shopId = normalizeRecordId(shop.id) || String(shop.id ?? '');
 				shopName = typeof shop.name === 'string' ? shop.name : null;
-				const seen = new Set<string>();
-				const pushTerm = (raw: unknown) => {
-					const term = typeof raw === 'string' ? raw.trim() : '';
-					if (term && !seen.has(term)) {
-						seen.add(term);
-						shopTerms.push(term);
-					}
-				};
-				pushTerm(shop.name);
-				if (Array.isArray(shop.aliases)) {
-					for (const alias of shop.aliases) pushTerm(alias);
-				}
 				break;
 			}
 		}
@@ -125,13 +112,6 @@ export async function resolveMarkerContext(
 		}
 	}
 
-	// Plain, typeable separators only — this text gets embedded, so avoid glyphs
-	// a user would never type (e.g. '·'), which would skew query matching.
-	const shopSegment = shopTerms.length > 0 ? shopTerms : rentName ? [rentName] : [];
-	const draftDescription = [levelName, zoneName, ...shopSegment]
-		.filter((part): part is string => typeof part === 'string' && part.trim() !== '')
-		.join(', ');
-
 	return {
 		levelId,
 		levelName,
@@ -140,7 +120,6 @@ export async function resolveMarkerContext(
 		rentId,
 		rentName,
 		shopId,
-		shopName,
-		draftDescription
+		shopName
 	};
 }

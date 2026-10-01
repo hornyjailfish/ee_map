@@ -55,10 +55,7 @@ export function normalizeGeometry(value: unknown): NormalizedGeometry {
 
 	// Surreal SDK Geometry* values expose GeoJSON via toJSON(), have a coordinates
 	// getter, but no own `type` — must call toJSON before treating as plain GeoJSON.
-	if (
-		typeof (obj as { toJSON?: unknown }).toJSON === 'function' &&
-		typeof obj.type !== 'string'
-	) {
+	if (typeof (obj as { toJSON?: unknown }).toJSON === 'function' && typeof obj.type !== 'string') {
 		try {
 			const json = (obj as { toJSON: () => unknown }).toJSON();
 			// Guard against pathological toJSON() returning the same object
@@ -224,6 +221,7 @@ export function toMap(input: {
 	levelId?: string | null;
 }): MapViewModel {
 	const { config, entities } = input;
+	// ???
 	const levelFilter =
 		input.levelId === undefined || input.levelId === null || input.levelId === ''
 			? null
@@ -262,19 +260,11 @@ function buildLayerView(
 	const features: MapFeature[] = [];
 
 	for (const row of rows) {
-	  // INFO: make sure proper style registred for different embedding statuses
-		// FIXME: default style
-    if (layer.table == 'embeddings') {
-      const styleMod = [layer.styleKey, row.embedding_status]
-      layer.styleKey = styleMod.join('_')
-    }
 		const geometry = normalizeGeometry(row[layer.geometryField]);
 		if (geometry.kind === 'empty') continue;
 
 		// Levels floor plan: row is the level itself (no FK field)
-		const levelId = layer.levelField
-			? levelFromRow(row[layer.levelField])
-			: levelFromRow(row.id);
+		const levelId = layer.levelField ? levelFromRow(row[layer.levelField]) : levelFromRow(row.id);
 
 		if (levelFilter !== null) {
 			if (levelId === null || levelId !== levelFilter) continue;
