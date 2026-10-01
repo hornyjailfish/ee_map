@@ -12,6 +12,20 @@
 
 export type XY = [number, number];
 
+/**
+ * Coordinate precision for every position written through the shared CAD snap.
+ * The map plane is metric YX in metres, so millimetres (0.001 m) are ~1 mm —
+ * well below what mouse-derived floats need and consistent with the dedupe keys
+ * used elsewhere in this module.
+ */
+export const SNAP_COORD_DECIMALS = 3;
+
+/** Round a snap output to {@link SNAP_COORD_DECIMALS}. */
+export function roundSnapCoord(n: number): number {
+	const f = 10 ** SNAP_COORD_DECIMALS;
+	return Math.round(n * f) / f;
+}
+
 export type AlignmentGuide = {
 	/** Vertical guide at this map X, or horizontal at this map Y. */
 	axis: 'x' | 'y';
@@ -46,6 +60,33 @@ export function constrainOrtho(anchor: XY, point: XY): XY {
 		return [point[0], anchor[1]];
 	}
 	return [anchor[0], point[1]];
+}
+
+/**
+ * Project `point` onto the nearest axis-aligned ray (0°/90°/180°/270°) through
+ * any of the given anchors. A single anchor behaves like {@link constrainOrtho};
+ * with several (e.g. a polygon vertex's two neighbours) the closest projection
+ * wins.
+ */
+export function constrainOrthoToAnchors(anchors: readonly XY[], point: XY): XY {
+	if (anchors.length === 0) return [point[0], point[1]];
+	let best: XY = constrainOrtho(anchors[0]!, point);
+	let bestDist = distSq(best, point);
+	for (let i = 1; i < anchors.length; i++) {
+		const candidate = constrainOrtho(anchors[i]!, point);
+		const d = distSq(candidate, point);
+		if (d < bestDist) {
+			best = candidate;
+			bestDist = d;
+		}
+	}
+	return best;
+}
+
+function distSq(a: XY, b: XY): number {
+	const dx = a[0] - b[0];
+	const dy = a[1] - b[1];
+	return dx * dx + dy * dy;
 }
 
 /**
@@ -101,14 +142,14 @@ export function applyDrawConstraints(
 	opts: {
 		vertices: readonly XY[];
 		toleranceMap: number;
-		/** Last committed sketch vertex — enables Shift ortho. */
-		anchor?: XY | null;
+		/** Anchor vertices enabling Shift ortho (draw: last vertex, edit: neighbours). */
+		anchors?: readonly XY[];
 		ortho?: boolean;
 	}
 ): AlignmentSnapResult {
 	let coordinate: XY = [cursor[0], cursor[1]];
-	if (opts.ortho && opts.anchor) {
-		coordinate = constrainOrtho(opts.anchor, coordinate);
+	if (opts.ortho && opts.anchors?.length) {
+		coordinate = constrainOrthoToAnchors(opts.anchors, coordinate);
 	}
 
 	const aligned = snapAlignment(coordinate, opts.vertices, opts.toleranceMap);

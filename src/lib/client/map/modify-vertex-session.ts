@@ -18,6 +18,7 @@
 import type Map from 'ol/Map';
 import Feature from 'ol/Feature';
 import type Geometry from 'ol/geom/Geometry';
+import type Polygon from 'ol/geom/Polygon';
 import Collection from 'ol/Collection';
 import Modify from 'ol/interaction/Modify';
 import VectorLayer from 'ol/layer/Vector';
@@ -69,8 +70,10 @@ export class ModifyVertexSession {
 	private readonly features = new Collection<Feature>();
 	private readonly snap: MapSnapAssist;
 	private preDragGeometry: Geometry | null = null;
-	/** Vertex position at drag start — Shift ortho anchor + alignment exclude. */
+	/** Vertex position at drag start — alignment exclude only. */
 	private dragStart: XY | null = null;
+	/** Fixed neighbour vertices of the dragged corner — Shift-ortho anchors. */
+	private orthoAnchors: XY[] = [];
 	private dragging = false;
 	private disposed = false;
 	private locked = false;
@@ -104,6 +107,10 @@ export class ModifyVertexSession {
 				c && c.length >= 2 && Number.isFinite(c[0]) && Number.isFinite(c[1])
 					? [c[0]!, c[1]!]
 					: null;
+
+			// Shift ortho anchors: neighbours of the corner being dragged (fixed throughout).
+			this.orthoAnchors =
+				geom && this.dragStart ? polygonNeighbours(geom, this.dragStart) : [];
 
 			// Edit mutates live geometry — refresh targets, enable feature snap (others only)
 			this.snap.invalidateVertexCache();
@@ -153,8 +160,8 @@ export class ModifyVertexSession {
 			getSnapSources: options.getSnapSources,
 			// Only constrain while a corner is mid-drag (avoid hover fighting Select)
 			isEnabled: () => this.dragging && !this.locked && !this.disposed,
-			// Shift = H/V from the corner's start position
-			getAnchor: () => this.dragStart,
+			// Shift = H/V from the dragged corner's neighbours (90°/180° snap)
+			getAnchors: () => this.orthoAnchors,
 			// Do not align back onto the pre-drag corner
 			getExcludeVertices: () => (this.dragStart ? [this.dragStart] : []),
 			// Critical: don't OL-snap to own edges / live vertex (that pinned near start)
@@ -264,4 +271,37 @@ function coordsEqual(a: unknown, b: unknown): boolean {
 		if (!coordsEqual(a[i], b[i])) return false;
 	}
 	return true;
+}
+
+/**
+ * Ring neighbours of the polygon vertex closest to `at` — the two fixed corners
+ * used as Shift-ortho anchors while dragging that vertex.
+ */
+function polygonNeighbours(geometry: Geometry, at: XY): XY[] {
+	if (geometry.getType() !== 'Polygon') return [];
+	const ring = (geometry as Polygon).getCoordinates()[0] ?? [];
+	// Closed GeoJSON ring: first === last, so real corner count is length - 1.
+	if (ring.length < 4) return [];
+	const n = ring.length - 1;
+
+	let bestIdx = -1;
+	let bestDist = Infinity;
+	for (let i = 0; i < n; i++) {
+		const c = ring[i]!;
+		const dx = c[0] - at[0];
+		const dy = c[1] - at[1];
+		const d = dx * dx + dy * dy;
+		if (d < bestDist) {
+			bestDist = d;
+			bestIdx = i;
+		}
+	}
+	if (bestIdx < 0) return [];
+
+	const prev = ring[(bestIdx - 1 + n) % n]!;
+	const next = ring[(bestIdx + 1) % n]!;
+	return [
+		[Number(prev[0]), Number(prev[1])],
+		[Number(next[0]), Number(next[1])]
+	];
 }
