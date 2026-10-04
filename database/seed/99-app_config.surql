@@ -77,7 +77,7 @@ INSERT IGNORE INTO app_config [
 				# Dotted accessor: a marker labels itself through its level link.
 				display: { field: 'level.name' },
 				table: {
-					order: ['level', 'zone', 'closes_shop', 'geometry']
+					order: ['level', 'zone', 'closest_shop', 'geometry']
 				}
 			},
 			marker_views: {

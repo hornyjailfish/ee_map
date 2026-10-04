@@ -170,8 +170,12 @@
 		switchTable(select.value, { clearForeignFocus: true });
 	}
 
+	let last_edit = $state(null);
 	function initGrid(api: IApi) {
 		gridApi = api;
+		api.intercept('open-editor', (ev)=>{
+			last_edit = api.getRow(ev.id)[ev.column]
+		})
 		applyDefaultSortMarks(api, view?.sort);
 		applyFocusToGrid(api, appUi.focusedId);
 	}
@@ -229,7 +233,7 @@
 
 		// None / cleared combo → '' so FormData + coerceScalar store DB null.
 		const value = editorValueFromDb(ev.value);
-
+		if (value == '' && last_edit == null) return;
 		try {
 			writePending = true;
 			writeError = null;
@@ -396,7 +400,7 @@
 				<Button
 					type="button"
 					size="sm"
-					variant="outline"
+					variant="destructive"
 					disabled={!canDelete || selectedRows.length === 0 || writePending}
 					onclick={deleteSelected}
 				>
