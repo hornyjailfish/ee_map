@@ -66,7 +66,9 @@ const updateFeatureSchema = z
 /** Point GeoJSON string (markers). */
 const markerPointSchema = z.object({
 	point: z.string().default(''),
-	level: z.string().default('')
+	level: z.string().default(''),
+	/** Optional nearest-rent hint resolved client-side (metric XY plane). */
+	closestRent: z.string().default('')
 });
 
 const createMarkerSchema = z.object({
@@ -74,7 +76,7 @@ const createMarkerSchema = z.object({
 	level: z.string().default(''),
 	description: z.string().default(''),
 	zone: z.string().optional(),
-	rent: z.string().optional(),
+	shop: z.string().optional(),
 	image: z.string().optional()
 });
 
@@ -421,7 +423,13 @@ export const actions: Actions = {
 			assertCanEdit(roles);
 
 			const level = parsed.data.level.trim() ? parsed.data.level.trim() : null;
-			const context: MarkerContext = await resolveMarkerContext(locals.session, point, level);
+			const closestRent = parsed.data.closestRent.trim() ? parsed.data.closestRent.trim() : null;
+			const context: MarkerContext = await resolveMarkerContext(
+				locals.session,
+				point,
+				level,
+				closestRent
+			);
 			return { ok: true as const, context };
 		} catch (err) {
 			return failFromError(err);
@@ -458,7 +466,7 @@ export const actions: Actions = {
 				description: parsed.data.description,
 				levelId: parsed.data.level.trim(),
 				zoneId: parsed.data.zone?.trim() || null,
-				rentId: parsed.data.rent?.trim() || null,
+				shopId: parsed.data.shop?.trim() || null,
 				point,
 				image: parsed.data.image?.trim() || null
 			});

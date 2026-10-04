@@ -35,3 +35,5 @@ export {
 } from './draw-snap';
 
 export { MAP_SNAP_PIXEL_TOLERANCE } from './map-snap-assist';
+
+export { findClosestFeatureByTable, type ClosestFeatureHit } from './closest-feature';

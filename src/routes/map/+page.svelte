@@ -13,11 +13,13 @@
 	import ViewLoadingOverlay from '$lib/components/view/ViewLoadingOverlay.svelte';
 	import { ApiError, postFormAction } from '$lib/client/http';
 	import {
+		findClosestFeatureByTable,
 		geoJsonToNormalized,
 		type MapToolMode,
 		type ModifyCommit,
 		type WritableGeoJSON
 	} from '$lib/client/map';
+	import type OlMap from 'ol/Map';
 	import type { EditorOption } from '$lib/client/editors';
 	import { appUi } from '$lib/client/state/app-ui.svelte';
 	import type { AppRole } from '$lib/catalog-types';
@@ -101,6 +103,9 @@
 	let markerSubmitting = $state(false);
 	let markerError = $state<string | null>(null);
 	let markerContext = $state<MarkerContextData | null>(null);
+
+	// Live OL map (client-only). Plain ref — proxying the OL Map is not wanted.
+	let mapInstance: OlMap | null = null;
 
 	// Add a `marker_views` row to the currently selected marker.
 	let markerViewOpen = $state(false);
@@ -359,10 +364,20 @@
 		markerResolving = true;
 		markerError = null;
 		markerContext = null;
+
+		// Nearest rent (shop) by straight-line distance on the metric XY plane.
+		// Sent as a hint: the server still uses exact point-in-polygon when the
+		// point lands inside a rent, otherwise falls back to the closest one.
+		const closestRent =
+			mapInstance && geometry.type === 'Point'
+				? findClosestFeatureByTable(mapInstance, 'rents', geometry.coordinates, levelId)
+				: null;
+
 		try {
 			const result = await postFormAction<{ context: MarkerContextData }>('resolveMarkerContext', {
 				point: JSON.stringify(geometry),
-				level: levelId ?? ''
+				level: levelId ?? '',
+				closestRent: closestRent?.id ?? ''
 			});
 			markerContext = result.context;
 		} catch (err) {
@@ -384,7 +399,7 @@
 				level: levelId ?? '',
 				description,
 				zone: markerContext?.zoneId ?? '',
-				rent: markerContext?.rentId ?? '',
+				shop: markerContext?.shopId ?? '',
 				image
 			});
 
@@ -755,6 +770,7 @@
 				{modifyLocked}
 				{onDrawEnd}
 				{onModifyEnd}
+				onMapReady={(m) => (mapInstance = m)}
 			/>
 			{#if appUi.focusedId && !createOpen}
 				<svelte:boundary>

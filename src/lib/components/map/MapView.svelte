@@ -63,6 +63,11 @@
 		onDrawEnd?: (geometry: WritableGeoJSON) => void;
 		/** Fired when a vertex or edge edit finishes on the focused feature. */
 		onModifyEnd?: (commit: ModifyCommit) => void;
+		/**
+		 * Called with the OL map once mounted (client-only), and `null` on teardown.
+		 * Lets the parent query map state (e.g. closest feature on a layer).
+		 */
+		onMapReady?: (map: Map | null) => void;
 		class?: string;
 	};
 
@@ -75,6 +80,7 @@
 		modifyLocked = false,
 		onDrawEnd,
 		onModifyEnd,
+		onMapReady,
 		class: className = ''
 	}: Props = $props();
 
@@ -157,6 +163,10 @@
 			map.updateSize();
 		});
 		resizeObserver.observe(element);
+
+		// Surface the live map to the parent (client-only).
+		const readyCb = untrack(() => onMapReady);
+		readyCb?.(map);
 
 		/** Draft sketch source — Draw writes here; confirmed draft stays until parent clears. */
 		const draftSource = new VectorSource({ wrapX: false });
@@ -559,6 +569,7 @@
 			disposeDrawSession();
 			disposeModifySession();
 			disposeExtrudeSession();
+			readyCb?.(null);
 			map.setTarget(undefined);
 			map.dispose();
 		};

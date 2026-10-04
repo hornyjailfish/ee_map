@@ -5,6 +5,7 @@
  * Given a marker point (metric XY) and a level id, find:
  *   - the `zones` polygon containing the point  → zone name / id
  *   - the `rents` polygon containing the point  → the `shops` brand that rents it
+ *     (falling back to `closestRentId` when the point isn't inside any rent)
  *
  * Returns human-readable names (for the badge) plus the ids to persist as
  * `markers.zone` / `markers.closest_shop` links. The editor writes the final
@@ -57,7 +58,8 @@ function findByLevel(rows: Record<string, unknown>[], levelId: string | null): P
 export async function resolveMarkerContext(
 	session: Surreal,
 	point: MarkerPoint,
-	levelId: string | null
+	levelId: string | null,
+	closestRentId: string | null = null
 ): Promise<MarkerContext> {
 	const [zonesRows, rentsRows, shopsRows, levelsRows] = await Promise.all([
 		queryEntities(session, 'zones'),
@@ -86,6 +88,18 @@ export async function resolveMarkerContext(
 			rentId = rent.id;
 			rentName = rent.name;
 			break;
+		}
+	}
+
+	// Fall back to the closest rent (computed client-side on the metric XY plane)
+	// when the point doesn't land inside any rented area.
+	if (!rentId && closestRentId) {
+		for (const rent of rents) {
+			if (rent.id === closestRentId) {
+				rentId = rent.id;
+				rentName = rent.name;
+				break;
+			}
 		}
 	}
 

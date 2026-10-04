@@ -22,8 +22,8 @@ export type CreateMarkerInput = {
 	description: string;
 	levelId: string;
 	zoneId?: string | null;
-	/** Nearest rented area; stored as `markers.closest_shop` (record<rents>). */
-	rentId?: string | null;
+	/** Nearest shop (brand); stored as `markers.closest_shop` (record<shops>). */
+	shopId?: string | null;
 	point: MarkerPoint;
 	/** Optional image as a base64 data URL, uploaded to the `images` bucket. */
 	image?: string | null;
@@ -54,11 +54,11 @@ function assertLevelLink(value: string): StringRecordId {
 	return new StringRecordId(value);
 }
 
-function assertRentLink(value: string | null | undefined): StringRecordId | undefined {
+function assertShopLink(value: string | null | undefined): StringRecordId | undefined {
 	if (!value) return undefined;
 	validateRecordId(value);
-	if (tableOfId(value) !== 'rents') {
-		throw new MutateError(400, 'invalid_rent', `Field 'closest_shop' must reference a rents record`);
+	if (tableOfId(value) !== 'shops') {
+		throw new MutateError(400, 'invalid_shop', `Field 'closest_shop' must reference a shops record`);
 	}
 	return new StringRecordId(value);
 }
@@ -159,8 +159,8 @@ export async function createMarker(
 
 	const zone = recordLink(input.zoneId ?? null);
 	if (zone) markerData.zone = zone;
-	const rent = assertRentLink(input.rentId ?? null);
-	if (rent) markerData.closest_shop = rent;
+	const shop = assertShopLink(input.shopId ?? null);
+	if (shop) markerData.closest_shop = shop;
 
 	// 2. Create marker, then view; roll back the marker if the view fails (HTTP
 	//    engine has no transactions, so compensation keeps the pair atomic).
