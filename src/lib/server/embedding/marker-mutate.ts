@@ -212,3 +212,56 @@ export async function createMarker(
 
 	return { id, viewId, imageUrl };
 }
+
+export type CreateMarkerViewInput = {
+	/** Existing `markers` record the new view references. */
+	markerId: string;
+	/** Editor-owned text; stored as `marker_views.user_description`. */
+	description: string;
+	/** Optional image as a base64 data URL, uploaded to the `images` bucket. */
+	image?: string | null;
+};
+
+/**
+ * Create a `marker_views` row for an existing marker (no `markers` row is
+ * created). Mirrors {@link createMarker}'s view-handling: reserve the image
+ * pointer, create the row, then write the image bytes (non-fatal).
+ */
+export async function createMarkerView(
+	session: Surreal,
+	input: CreateMarkerViewInput
+): Promise<{ viewId: string }> {
+	const markerId = validateRecordId(input.markerId.trim());
+	if (tableOfId(markerId) !== 'markers') {
+		throw new MutateError(400, 'invalid_marker', 'marker must reference a markers record');
+	}
+
+	const description = typeof input.description === 'string' ? input.description : '';
+	const image = prepareImage(input.image ?? null);
+	const imageUrl = image ? image.ref.toString() : null;
+
+	const viewData: Record<string, unknown> = {
+		marker: new StringRecordId(markerId),
+		user_description: description || undefined
+	};
+	if (imageUrl) viewData.image_url = imageUrl;
+
+	const [view] = await session.query<[Record<string, unknown>[] | Record<string, unknown>]>(
+		'CREATE type::table("marker_views") CONTENT $view RETURN id',
+		{ view: viewData }
+	);
+	const viewId = normalizeRecordId(Array.isArray(view) ? view[0]?.id : view?.id);
+	if (!viewId) {
+		throw new MutateError(500, 'create_failed', 'Failed to create marker_views row');
+	}
+
+	if (image) {
+		try {
+			await session.query('RETURN file::put($ref, $data)', { ref: image.ref, data: image.bytes });
+		} catch (error) {
+			console.warn('[marker] image upload failed:', error instanceof Error ? error.message : error);
+		}
+	}
+
+	return { viewId };
+}

@@ -23,6 +23,9 @@
 		resolving?: boolean;
 		submitting?: boolean;
 		error?: string | null;
+		/** `marker` = new point; `view` = add a description row to an existing marker. */
+		mode?: 'marker' | 'view';
+		markerId?: string | null;
 		/** Called on submit with the final description and optional image data URL. */
 		onCreate?: (description: string, image: string | null) => void | Promise<void>;
 	};
@@ -33,6 +36,8 @@
 		resolving = false,
 		submitting = false,
 		error = null,
+		mode = 'marker',
+		markerId = null,
 		onCreate
 	}: Props = $props();
 
@@ -60,6 +65,16 @@
 			.filter((p): p is string => typeof p === 'string' && p.trim() !== '')
 			.join(' · ')
 	);
+
+	const isView = $derived(mode === 'view');
+	const title = $derived(isView ? 'Add marker view' : 'Place search marker');
+	const dialogDescription = $derived(
+		isView
+			? 'Add a description row to this marker. Optionally attach a reference photo.'
+			: 'Add a point to the indoor search dataset. Write a short description and optionally attach a reference photo.'
+	);
+	const submitLabel = $derived(isView ? 'Add view' : 'Save marker');
+	const errorTitle = $derived(isView ? 'Add view failed' : 'Save failed');
 
 	const canSubmit = $derived(!submitting && !resolving);
 
@@ -107,16 +122,17 @@
 <Dialog.Root bind:open>
 	<Dialog.Content class="flex max-h-[min(90vh,40rem)] flex-col gap-4 overflow-hidden sm:max-w-md">
 		<Dialog.Header>
-			<Dialog.Title>Place search marker</Dialog.Title>
-			<Dialog.Description>
-				Add a point to the indoor search dataset. Write a short description and optionally attach a
-				reference photo.
-			</Dialog.Description>
+			<Dialog.Title>{title}</Dialog.Title>
+			<Dialog.Description>{dialogDescription}</Dialog.Description>
 		</Dialog.Header>
 
 		<div class="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-0.5">
 			<div class="flex flex-wrap items-center gap-1.5">
-				{#if resolving}
+				{#if isView}
+					{#if markerId}
+						<Badge variant="secondary">Linked to <span class="font-mono">{markerId}</span></Badge>
+					{/if}
+				{:else if resolving}
 					<span class="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
 						<Spinner class="size-3" data-icon="inline-start" />
 						Resolving map context…
@@ -196,7 +212,7 @@
 		{#if error}
 			<Alert.Root variant="destructive">
 				<CircleAlertIcon />
-				<Alert.Title>Save failed</Alert.Title>
+				<Alert.Title>{errorTitle}</Alert.Title>
 				<Alert.Description>{error}</Alert.Description>
 			</Alert.Root>
 		{/if}
@@ -211,7 +227,7 @@
 				{#if submitting}
 					<Spinner class="size-3.5" data-icon="inline-start" />
 				{/if}
-				Save marker
+				{submitLabel}
 			</Button>
 		</Dialog.Footer>
 	</Dialog.Content>

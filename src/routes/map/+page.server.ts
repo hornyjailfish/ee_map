@@ -21,7 +21,12 @@ import {
 import { buildMapCrudMeta, withoutTables, type MapCrudMeta } from '$lib/transform/map-crud';
 import { toMap, type MapFeature, type MapViewModel } from '$lib/transform/to-map';
 import { entityByName } from '$lib/transform/to-table';
-import { createMarker, resolveMarkerContext, type MarkerContext } from '$lib/server/embedding';
+import {
+	createMarker,
+	createMarkerView,
+	resolveMarkerContext,
+	type MarkerContext
+} from '$lib/server/embedding';
 
 export type MapPageData = {
 	/** Active level filter from `?level=`; null = all levels. */
@@ -70,6 +75,12 @@ const createMarkerSchema = z.object({
 	description: z.string().default(''),
 	zone: z.string().optional(),
 	rent: z.string().optional(),
+	image: z.string().optional()
+});
+
+const createMarkerViewSchema = z.object({
+	marker: z.string().default(''),
+	description: z.string().default(''),
 	image: z.string().optional()
 });
 
@@ -452,6 +463,39 @@ export const actions: Actions = {
 				image: parsed.data.image?.trim() || null
 			});
 			return { ok: true as const, id: result.id, viewId: result.viewId };
+		} catch (err) {
+			return failFromError(err);
+		}
+	},
+
+	/**
+	 * Add a `marker_views` row to an existing `markers` record. The `marker`
+	 * back-reference is set to the selected marker; the description is stored on
+	 * the view's `user_description` (image upload handled like `createMarker`).
+	 */
+	createMarkerView: async ({ request, locals, fetch }) => {
+		const form = Object.fromEntries((await request.formData()).entries()) as Record<string, string>;
+		const parsed = createMarkerViewSchema.safeParse(form);
+		if (!parsed.success) {
+			return fail(400, { code: 'invalid_form', message: 'Invalid form data' });
+		}
+		if (!parsed.data.marker.trim()) {
+			return fail(400, { code: 'invalid_form', message: 'marker is required' });
+		}
+
+		try {
+			if (!locals.session?.isConnected) {
+				throw new MutateError(503, 'db_unavailable', 'Database unavailable');
+			}
+			const roles = await getUserRoles(locals.selection.namespace, locals.user, fetch);
+			assertCanEdit(roles);
+
+			const result = await createMarkerView(locals.session, {
+				markerId: parsed.data.marker.trim(),
+				description: parsed.data.description,
+				image: parsed.data.image?.trim() || null
+			});
+			return { ok: true as const, id: result.viewId };
 		} catch (err) {
 			return failFromError(err);
 		}

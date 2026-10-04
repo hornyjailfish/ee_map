@@ -7,6 +7,7 @@
 	 * Overlay (not modal) so the map stays selectable while inspecting.
 	 */
 	import PencilIcon from '@lucide/svelte/icons/pencil';
+	import PlusIcon from '@lucide/svelte/icons/plus';
 	import XIcon from '@lucide/svelte/icons/x';
 	import {
 		ensureEditorsRegistered,
@@ -41,6 +42,7 @@
 			id: string;
 			values: Record<string, string>;
 		}) => void | Promise<void>;
+		onAddView?: () => void | Promise<void>;
 	};
 
 	let {
@@ -49,7 +51,8 @@
 		submitting = false,
 		error = null,
 		onClose,
-		onSave
+		onSave,
+		onAddView
 	}: Props = $props();
 
 	let editing = $state(false);
@@ -67,6 +70,9 @@
 	const viewFields = $derived(
 		(detail?.fields ?? []).filter((f) => f.name !== 'id' && f.valueType !== 'geometry')
 	);
+
+	/** Markers can grow their linked `marker_views` list from the properties panel. */
+	const canAddView = $derived(Boolean(canEdit && detail?.table === 'markers'));
 
 	function optionsForColumn(d: MapFeatureRecordDetail, c: TableColumn): EditorOption[] | null {
 		if (c.valueType !== 'record') return null;
@@ -169,6 +175,20 @@
 							onclick={startEdit}
 						>
 							<PencilIcon class="size-3" />
+						</Button>
+					{/if}
+					{#if canAddView && detail && !editing}
+						<Button
+							type="button"
+							variant="outline"
+							size="icon"
+							class="size-6 rounded-full"
+							title="Add marker view"
+							aria-label="Add marker view"
+							disabled={submitting}
+							onclick={() => onAddView?.()}
+						>
+							<PlusIcon class="size-3" />
 						</Button>
 					{/if}
 					<Button

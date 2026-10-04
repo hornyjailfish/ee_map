@@ -102,6 +102,11 @@
 	let markerError = $state<string | null>(null);
 	let markerContext = $state<MarkerContextData | null>(null);
 
+	// Add a `marker_views` row to the currently selected marker.
+	let markerViewOpen = $state(false);
+	let markerViewSubmitting = $state(false);
+	let markerViewError = $state<string | null>(null);
+
 	/** Pending geometry save after a vertex/edge drag (retry / cancel). */
 	type PendingModify = {
 		id: string;
@@ -544,6 +549,31 @@
 		}
 	}
 
+	function openAddView() {
+		if (!roleCanEdit || !appUi.focusedId) return;
+		markerViewError = null;
+		markerViewOpen = true;
+	}
+
+	async function submitMarkerView(description: string, image: string | null) {
+		if (!roleCanEdit || !appUi.focusedId || markerViewSubmitting) return;
+		try {
+			markerViewSubmitting = true;
+			markerViewError = null;
+			await postFormAction('createMarkerView', {
+				marker: appUi.focusedId,
+				description,
+				image
+			});
+			markerViewOpen = false;
+			await invalidateAll();
+		} catch (err) {
+			markerViewError = formatWriteError(err, 'Failed to add marker view');
+		} finally {
+			markerViewSubmitting = false;
+		}
+	}
+
 	// Dialog cancel / dismiss discards the pending sketch
 	$effect(() => {
 		if (!createOpen && !markerOpen && draftGeo && !createSubmitting && !markerSubmitting) {
@@ -777,6 +807,7 @@
 								appUi.focusRecord(null);
 							}}
 							onSave={saveFeatureProperties}
+							onAddView={openAddView}
 						/>
 					{/key}
 				</svelte:boundary>
@@ -813,5 +844,16 @@
 		submitting={markerSubmitting}
 		error={markerError}
 		onCreate={submitMarker}
+	/>
+{/if}
+
+{#if roleCanEdit}
+	<MarkerModal
+		bind:open={markerViewOpen}
+		mode="view"
+		markerId={appUi.focusedId}
+		submitting={markerViewSubmitting}
+		error={markerViewError}
+		onCreate={submitMarkerView}
 	/>
 {/if}
