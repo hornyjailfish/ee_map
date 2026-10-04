@@ -2,7 +2,7 @@
  * Indoor marker write seam.
  *
  * The embedding dataset is split across two tables:
- * - `markers`      — metainfo + the point geometry (`level`, `zone`, `closes_shop`)
+ * - `markers`      — metainfo + the point geometry (`level`, `zone`, `closest_shop`)
  * - `marker_views` — userfacing description (`user_description` →
  *                    `generated_description` computed by the DB) and the vector
  *                    holder filled by the separate embedding pipeline.
@@ -22,7 +22,7 @@ export type CreateMarkerInput = {
 	description: string;
 	levelId: string;
 	zoneId?: string | null;
-	/** Nearest rented area; stored as `markers.closes_shop` (record<rents>). */
+	/** Nearest rented area; stored as `markers.closest_shop` (record<rents>). */
 	rentId?: string | null;
 	point: MarkerPoint;
 	/** Optional image as a base64 data URL, uploaded to the `images` bucket. */
@@ -58,7 +58,7 @@ function assertRentLink(value: string | null | undefined): StringRecordId | unde
 	if (!value) return undefined;
 	validateRecordId(value);
 	if (tableOfId(value) !== 'rents') {
-		throw new MutateError(400, 'invalid_rent', `Field 'closes_shop' must reference a rents record`);
+		throw new MutateError(400, 'invalid_rent', `Field 'closest_shop' must reference a rents record`);
 	}
 	return new StringRecordId(value);
 }
@@ -160,7 +160,7 @@ export async function createMarker(
 	const zone = recordLink(input.zoneId ?? null);
 	if (zone) markerData.zone = zone;
 	const rent = assertRentLink(input.rentId ?? null);
-	if (rent) markerData.closes_shop = rent;
+	if (rent) markerData.closest_shop = rent;
 
 	// 2. Create marker, then view; roll back the marker if the view fails (HTTP
 	//    engine has no transactions, so compensation keeps the pair atomic).

@@ -17,7 +17,7 @@ UPDATE app_config:main SET
 	entities.markers = {
 		label: 'Markers',
 		display: { field: 'level.name' },
-		table: { order: ['level', 'zone', 'closes_shop', 'geometry'] }
+		table: { order: ['level', 'zone', 'closest_shop', 'geometry'] }
 	},
 	entities.marker_views = {
 		label: 'Marker views',

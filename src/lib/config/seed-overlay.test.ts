@@ -57,7 +57,7 @@ export const EE_OVERLAY_SEED: AppConfigOverlay = {
 		markers: {
 			label: 'Markers',
 			display: { field: 'level.name' },
-			table: { order: ['level', 'zone', 'closes_shop', 'geometry'] }
+			table: { order: ['level', 'zone', 'closest_shop', 'geometry'] }
 		},
 		marker_views: {
 			label: 'Marker views',
@@ -276,7 +276,7 @@ const eeAuto: AutoProfile = {
 			fields: [
 				{ name: 'level', type: 'record', optional: false, recordTargets: ['levels'] },
 				{ name: 'zone', type: 'record', optional: false, recordTargets: ['zones'] },
-				{ name: 'closes_shop', type: 'record', optional: false, recordTargets: ['rents'] },
+				{ name: 'closest_shop', type: 'record', optional: false, recordTargets: ['rents'] },
 				{
 					name: 'geometry',
 					type: 'geometry',

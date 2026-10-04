@@ -35,6 +35,10 @@ export interface Connects {
 	out: RecordId<'breakers'> | RecordId<'rents'>;
 }
 
+export interface Debug {
+	id: RecordId<'debug'>;
+}
+
 export interface ElectricRooms {
 	id: RecordId<'electric_rooms'>;
 	geometry?: GeometryPolygon;
@@ -71,7 +75,7 @@ export interface MarkerViews {
 
 export interface Markers {
 	id: RecordId<'markers'>;
-	closes_shop?: RecordId<'rents'>;
+	closest_shop?: RecordId<'shops'>;
 	geometry: GeometryPoint;
 	level: RecordId<'levels'>;
 	zone: RecordId<'zones'>;

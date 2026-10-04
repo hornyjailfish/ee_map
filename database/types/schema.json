@@ -953,8 +953,8 @@
       "kind": "NORMAL",
       "fields": [
         {
-          "name": "closes_shop",
-          "define": "DEFINE FIELD closes_shop ON markers TYPE record<rents> | none PERMISSIONS FULL",
+          "name": "closest_shop",
+          "define": "DEFINE FIELD closest_shop ON markers TYPE record<rents> | none PERMISSIONS FULL",
           "type": {
             "kind": "record",
             "tables": [

@@ -7,7 +7,7 @@
  *   - the `rents` polygon containing the point  → the `shops` brand that rents it
  *
  * Returns human-readable names (for the badge) plus the ids to persist as
- * `markers.zone` / `markers.closes_shop` links. The editor writes the final
+ * `markers.zone` / `markers.closest_shop` links. The editor writes the final
  * `user_description` itself — no description text is generated here.
  */
 

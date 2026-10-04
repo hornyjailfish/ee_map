@@ -231,7 +231,7 @@ export function liftOverlayToV3(raw: Record<string, unknown>): AppConfigOverlay 
 //
 // The embedding dataset used to live on one `embeddings` table (point + curated
 // description + vectors). In v3 it is split across:
-//   - `markers`      — metainfo (level/zone/closes_shop) + the point geometry
+//   - `markers`      — metainfo (level/zone/closest_shop) + the point geometry
 //   - `marker_views` — userfacing description (+ vector holder, owned by the
 //                      separate embedding pipeline via `embedding_queue`)
 // These canonical entries are what the migration produces (and what the seed
@@ -241,7 +241,7 @@ const MARKERS_ENTITY = {
 	label: 'Markers',
 	// Dotted accessor: a marker labels itself through its level link.
 	display: { field: 'level.name' },
-	table: { order: ['level', 'zone', 'closes_shop', 'geometry'] }
+	table: { order: ['level', 'zone', 'closest_shop', 'geometry'] }
 };
 
 const MARKER_VIEWS_ENTITY = {
