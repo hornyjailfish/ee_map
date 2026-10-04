@@ -156,11 +156,11 @@
 						<p class="truncate font-mono text-[10px] text-muted-foreground">{recordId}</p>
 					{/if}
 				</div>
-				<div class="flex shrink-0 items-center">
+				<div class="flex shrink-0 gap-0.5 items-center">
 					{#if canUpdate && detail && !editing}
 						<Button
 							type="button"
-							variant="ghost"
+							variant="outline"
 							size="icon"
 							class="size-6"
 							title="Edit properties"
@@ -173,9 +173,9 @@
 					{/if}
 					<Button
 						type="button"
-						variant="ghost"
+						variant="default"
 						size="icon"
-						class="size-6"
+						class="size-6 rounded-full"
 						title="Close"
 						aria-label="Close properties"
 						disabled={submitting}

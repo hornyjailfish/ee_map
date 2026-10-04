@@ -159,7 +159,7 @@
 <header class="z-40 border-b border-border bg-background/95 backdrop-blur">
 	<div class="flex h-14 items-center justify-between gap-4 px-4">
 		<div class="flex min-w-0 items-center gap-4">
-			<a href={resolve('/')} class="text-sm font-semibold tracking-tight">Map</a>
+			<!-- <a href={resolve('/')} class="text-sm font-semibold tracking-tight">Map</a> -->
 
 			<nav class="flex items-center gap-1" aria-label="Views">
 				{#each NAV as item (item.href)}
@@ -169,7 +169,7 @@
 						class={cn(
 							'rounded-md px-2.5 py-1.5 text-sm transition-colors',
 							active
-								? 'bg-muted font-medium text-foreground'
+								? 'bg-primary font-medium text-primary-foreground'
 								: 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
 						)}
 						aria-current={active ? 'page' : undefined}
