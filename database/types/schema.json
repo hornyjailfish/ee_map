@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-10-01T12:43:38.769765Z",
+  "generatedAt": "2026-10-04T23:37:00.2462602Z",
   "namespace": "main",
   "database": "main",
   "tables": [
@@ -559,6 +559,15 @@
       ]
     },
     {
+      "name": "debug",
+      "define": "DEFINE TABLE debug TYPE ANY SCHEMALESS PERMISSIONS FULL",
+      "schemafull": false,
+      "kind": "ANY",
+      "fields": [],
+      "events": [],
+      "indexes": []
+    },
+    {
       "name": "electric_rooms",
       "define": "DEFINE TABLE electric_rooms TYPE NORMAL SCHEMAFULL PERMISSIONS FULL",
       "schemafull": true,
@@ -788,7 +797,12 @@
           "rawType": "int"
         }
       ],
-      "events": [],
+      "events": [
+        {
+          "name": "regen_description",
+          "define": "DEFINE EVENT regen_description ON levels WHEN $event != 'DELETE' AND $before.name != $after.name THEN { LET $markers = (SELECT VALUE id FROM markers WHERE level = $after.id); UPDATE marker_views SET version = $this.version WHERE marker INSIDE $markers; }"
+        }
+      ],
       "indexes": []
     },
     {
@@ -799,7 +813,7 @@
       "fields": [
         {
           "name": "generated_description",
-          "define": "DEFINE FIELD generated_description ON marker_views TYPE string VALUE (IF user_description THEN string::join(', ', marker.level.name, marker.zone.name, user_description) ELSE string::join(', ', marker.level.name, marker.zone.name) END) PERMISSIONS FULL",
+          "define": "DEFINE FIELD generated_description ON marker_views TYPE string VALUE { LET $aliases = (IF marker.closest_shop.aliases THEN marker.closest_shop.aliases.join(', ') ELSE NONE END); LET $parts = [marker.level.name, marker.zone.name, marker.closest_shop.area.name, marker.closest_shop.name, $aliases, user_description].filter(|$v: any| $v != NONE).join(', '); RETURN $parts; } PERMISSIONS FULL",
           "type": {
             "kind": "primitive",
             "name": "string"
@@ -855,7 +869,7 @@
         },
         {
           "name": "marker",
-          "define": "DEFINE FIELD marker ON marker_views TYPE record<markers> PERMISSIONS FULL",
+          "define": "DEFINE FIELD marker ON marker_views TYPE record<markers> REFERENCE ON DELETE IGNORE PERMISSIONS FULL",
           "type": {
             "kind": "record",
             "tables": [
@@ -913,7 +927,7 @@
         },
         {
           "name": "version",
-          "define": "DEFINE FIELD version ON marker_views TYPE int DEFAULT 1 VALUE (IF $before == NONE THEN 1 ELSE IF $before.generated_description != $after.generated_description OR $before.image_url != $after.image_url THEN ($before.version OR 0) + 1 ELSE $before.version END) PERMISSIONS FULL",
+          "define": "DEFINE FIELD version ON marker_views TYPE int DEFAULT 0 VALUE ($value ?? 0) + 1 PERMISSIONS FULL",
           "type": {
             "kind": "primitive",
             "name": "int"
@@ -928,7 +942,7 @@
       "events": [
         {
           "name": "add_embedding_task",
-          "define": "DEFINE EVENT add_embedding_task ON marker_views WHEN $event != 'DELETE' AND ($before.generated_description != $after.generated_description OR $before.image_url != $after.image_url) THEN { LET $version = $after.version; UPSERT type::record('embedding_queue', record::id($after.id)) SET data = $after.id, version_snapshot = $version; }"
+          "define": "DEFINE EVENT add_embedding_task ON marker_views WHEN $event != 'DELETE' AND ($before.generated_description != $after.generated_description OR $before.image_url != $after.image_url) THEN { LET $version = $after.version ?? $before.version + 1 ?? 1; UPSERT type::record('embedding_queue', record::id($after.id)) SET data = $after.id, version_snapshot = $version; }"
         },
         {
           "name": "remove_embedding_task",
@@ -954,18 +968,18 @@
       "fields": [
         {
           "name": "closest_shop",
-          "define": "DEFINE FIELD closest_shop ON markers TYPE record<rents> | none PERMISSIONS FULL",
+          "define": "DEFINE FIELD closest_shop ON markers TYPE record<shops> | none PERMISSIONS FULL",
           "type": {
             "kind": "record",
             "tables": [
-              "rents"
+              "shops"
             ]
           },
           "optional": true,
           "flexible": false,
           "readonly": false,
           "hasDefault": false,
-          "rawType": "record<rents> | none"
+          "rawType": "record<shops> | none"
         },
         {
           "name": "geometry",
@@ -1013,7 +1027,12 @@
           "rawType": "record<zones>"
         }
       ],
-      "events": [],
+      "events": [
+        {
+          "name": "regen_description",
+          "define": "DEFINE EVENT regen_description ON markers WHEN $event != 'DELETE' AND ($before.level != $after.level OR $before.zone != $after.zone OR $before.closest_shop != $after.closest_shop) THEN { UPDATE marker_views SET version = $this.version WHERE marker = $after.id }"
+        }
+      ],
       "indexes": []
     },
     {
@@ -1196,7 +1215,12 @@
           "rawType": "string"
         }
       ],
-      "events": [],
+      "events": [
+        {
+          "name": "regen_description",
+          "define": "DEFINE EVENT regen_description ON shops WHEN $before.name != $after.name OR $before.area != $after.area OR $before.aliases != $after.aliases THEN { LET $markers = (SELECT VALUE id FROM markers WHERE closest_shop = $after.id); UPDATE marker_views SET version = $this.version WHERE marker INSIDE $markers; }"
+        }
+      ],
       "indexes": [
         {
           "name": "unique_shops",
@@ -1297,7 +1321,12 @@
           "rawType": "string"
         }
       ],
-      "events": [],
+      "events": [
+        {
+          "name": "regen_description",
+          "define": "DEFINE EVENT regen_description ON zones WHEN $before.name != $after.name THEN { LET $markers = (SELECT VALUE id FROM markers WHERE zone = $after.id); UPDATE marker_views SET version = $this.version WHERE marker INSIDE $markers; }"
+        }
+      ],
       "indexes": []
     }
   ],
