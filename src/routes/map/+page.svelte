@@ -589,6 +589,42 @@
 		}
 	}
 
+	async function deleteMarker() {
+		if (!roleCanEdit || !appUi.focusedId || propsSubmitting) return;
+		const id = appUi.focusedId;
+		if (!confirm(`Delete marker ${id}?`)) return;
+		try {
+			propsSubmitting = true;
+			propsError = null;
+			writeError = null;
+			await postFormAction('deleteMarker', { id });
+			appUi.focusRecord(null);
+			await invalidateAll();
+		} catch (err) {
+			propsError = formatWriteError(err, 'Failed to delete marker');
+		} finally {
+			propsSubmitting = false;
+		}
+	}
+
+	async function saveMarkerViewUpdate(payload: { id: string; values: Record<string, string> }) {
+		if (!roleCanEdit || propsSubmitting) return;
+		try {
+			propsSubmitting = true;
+			propsError = null;
+			writeError = null;
+			await postFormAction('updateMarkerView', {
+				id: payload.id,
+				...payload.values
+			});
+			await invalidateAll();
+		} catch (err) {
+			propsError = formatWriteError(err, 'Failed to update marker view');
+		} finally {
+			propsSubmitting = false;
+		}
+	}
+
 	// Dialog cancel / dismiss discards the pending sketch
 	$effect(() => {
 		if (!createOpen && !markerOpen && draftGeo && !createSubmitting && !markerSubmitting) {
@@ -824,6 +860,8 @@
 							}}
 							onSave={saveFeatureProperties}
 							onAddView={openAddView}
+							onDelete={deleteMarker}
+							onSaveView={saveMarkerViewUpdate}
 						/>
 					{/key}
 				</svelte:boundary>

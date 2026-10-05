@@ -8,6 +8,7 @@
 	 */
 	import PencilIcon from '@lucide/svelte/icons/pencil';
 	import PlusIcon from '@lucide/svelte/icons/plus';
+	import Trash2Icon from '@lucide/svelte/icons/trash-2';
 	import XIcon from '@lucide/svelte/icons/x';
 	import {
 		ensureEditorsRegistered,
@@ -20,6 +21,7 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import * as Field from '$lib/components/ui/field/index.js';
 	import { Spinner } from '$lib/components/ui/spinner/index.js';
+	import { Textarea } from '$lib/components/ui/textarea/index.js';
 	import FormFieldControl from '$lib/components/table/FormFieldControl.svelte';
 	import type { TableColumn } from '$lib/transform/to-table';
 	import {
@@ -43,6 +45,8 @@
 			values: Record<string, string>;
 		}) => void | Promise<void>;
 		onAddView?: () => void | Promise<void>;
+		onDelete?: () => void | Promise<void>;
+		onSaveView?: (payload: { id: string; values: Record<string, string> }) => void | Promise<void>;
 	};
 
 	let {
@@ -52,12 +56,16 @@
 		error = null,
 		onClose,
 		onSave,
-		onAddView
+		onAddView,
+		onDelete,
+		onSaveView
 	}: Props = $props();
 
 	let editing = $state(false);
 	let values = $state<Record<string, string>>({});
 	let fieldErrors = $state<Record<string, string>>({});
+	let editingViewId = $state<string | null>(null);
+	let editingViewDescription = $state('');
 
 	const detailQuery = $derived(recordId ? getMapFeatureRecord({ id: recordId }) : null);
 	const detail = $derived(
@@ -73,6 +81,8 @@
 
 	/** Markers can grow their linked `marker_views` list from the properties panel. */
 	const canAddView = $derived(Boolean(canEdit && detail?.table === 'markers'));
+	/** Marker removal (does not cascade to marker_views). */
+	const canDelete = $derived(Boolean(canEdit && detail?.table === 'markers'));
 
 	function optionsForColumn(d: MapFeatureRecordDetail, c: TableColumn): EditorOption[] | null {
 		if (c.valueType !== 'record') return null;
@@ -139,6 +149,35 @@
 		const t = value.trim();
 		return t.length > 0 ? t : '—';
 	}
+
+	function viewUserDescription(view: MapFeatureRecordDetail): string {
+		return view.fields.find((f) => f.name === 'user_description')?.value ?? '';
+	}
+
+	function startViewEdit(view: MapFeatureRecordDetail) {
+		editingViewId = view.id;
+		editingViewDescription = viewUserDescription(view);
+	}
+
+	function cancelViewEdit() {
+		editingViewId = null;
+		editingViewDescription = '';
+	}
+
+	async function saveViewEdit(view: MapFeatureRecordDetail) {
+		if (submitting) return;
+		await onSaveView?.({
+			id: view.id,
+			values: { user_description: editingViewDescription.trim() }
+		});
+		editingViewId = null;
+		editingViewDescription = '';
+		try {
+			await detailQuery?.refresh();
+		} catch {
+			// page invalidate still refreshes map chrome
+		}
+	}
 </script>
 
 {#if recordId}
@@ -162,7 +201,7 @@
 						<p class="truncate font-mono text-[10px] text-muted-foreground">{recordId}</p>
 					{/if}
 				</div>
-				<div class="flex shrink-0 gap-0.5 items-center">
+				<div class="flex shrink-0 items-center gap-0.5">
 					{#if canUpdate && detail && !editing}
 						<Button
 							type="button"
@@ -189,6 +228,20 @@
 							onclick={() => onAddView?.()}
 						>
 							<PlusIcon class="size-3" />
+						</Button>
+					{/if}
+					{#if canDelete && detail && !editing}
+						<Button
+							type="button"
+							variant="outline"
+							size="icon"
+							class="size-6"
+							title="Remove marker"
+							aria-label="Remove marker"
+							disabled={submitting}
+							onclick={() => onDelete?.()}
+						>
+							<Trash2Icon class="size-3" />
 						</Button>
 					{/if}
 					<Button
@@ -299,6 +352,7 @@
 		</aside>
 
 		{#each detail?.markerViews ?? [] as view (view.id)}
+			{@const isEditing = editingViewId === view.id}
 			<aside
 				class="flex max-h-[min(40vh,16rem)] shrink-0 flex-col overflow-hidden rounded-md border border-border bg-background/95 shadow-md backdrop-blur-sm"
 				aria-label="Associated marker view"
@@ -311,24 +365,79 @@
 							<span class="truncate font-mono text-[10px] text-muted-foreground">{view.id}</span>
 						</div>
 					</div>
+					{#if canEdit && !isEditing}
+						<Button
+							type="button"
+							variant="ghost"
+							size="icon"
+							class="size-6"
+							title="Edit view"
+							aria-label="Edit view"
+							disabled={submitting}
+							onclick={() => startViewEdit(view)}
+						>
+							<PencilIcon class="size-3" />
+						</Button>
+					{/if}
 				</header>
 
-				<div class="min-h-0 flex-1 overflow-y-auto px-2 py-1.5">
-					<dl class="flex flex-col gap-0.5">
-						{#each view.fields.filter((f) => f.name !== 'id') as f (f.name)}
-							<div
-								class="grid grid-cols-[5.5rem_minmax(0,1fr)] items-baseline gap-x-2 gap-y-0 py-0.5"
-							>
-								<dt class="truncate text-[10px] text-muted-foreground">{f.label}</dt>
-								<dd class="truncate text-xs text-foreground" title={displayText(f.display)}>
-									{displayText(f.display)}
-								</dd>
-							</div>
-						{:else}
-							<p class="text-[11px] text-muted-foreground">No properties on this record.</p>
-						{/each}
-					</dl>
-				</div>
+				{#if isEditing}
+					<div class="min-h-0 flex-1 overflow-y-auto px-2 py-1.5">
+						<Field.Field class="gap-1">
+							<Field.Label for={`map-view-desc-${view.id}`} class="text-[11px]">
+								User description
+							</Field.Label>
+							<Textarea
+								id={`map-view-desc-${view.id}`}
+								bind:value={editingViewDescription}
+								rows={3}
+								disabled={submitting}
+								autocomplete="off"
+							/>
+						</Field.Field>
+					</div>
+					<footer
+						class="flex shrink-0 items-center justify-end gap-1.5 border-t border-border px-2 py-1.5"
+					>
+						<Button
+							type="button"
+							variant="outline"
+							size="sm"
+							class="h-7 px-2 text-xs"
+							disabled={submitting}
+							onclick={cancelViewEdit}>Cancel</Button
+						>
+						<Button
+							type="button"
+							size="sm"
+							class="h-7 px-2 text-xs"
+							disabled={submitting}
+							onclick={() => saveViewEdit(view)}
+						>
+							{#if submitting}
+								<Spinner class="size-3" data-icon="inline-start" />
+							{/if}
+							Save
+						</Button>
+					</footer>
+				{:else}
+					<div class="min-h-0 flex-1 overflow-y-auto px-2 py-1.5">
+						<dl class="flex flex-col gap-0.5">
+							{#each view.fields.filter((f) => f.name !== 'id') as f (f.name)}
+								<div
+									class="grid grid-cols-[5.5rem_minmax(0,1fr)] items-baseline gap-x-2 gap-y-0 py-0.5"
+								>
+									<dt class="truncate text-[10px] text-muted-foreground">{f.label}</dt>
+									<dd class="truncate text-xs text-foreground" title={displayText(f.display)}>
+										{displayText(f.display)}
+									</dd>
+								</div>
+							{:else}
+								<p class="text-[11px] text-muted-foreground">No properties on this record.</p>
+							{/each}
+						</dl>
+					</div>
+				{/if}
 			</aside>
 		{/each}
 	</div>

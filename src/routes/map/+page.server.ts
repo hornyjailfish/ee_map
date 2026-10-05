@@ -8,6 +8,7 @@ import { resolveAppConfig } from '$lib/server/config';
 import {
 	assertCanEdit,
 	createRecord,
+	deleteRecord,
 	geometryFieldName,
 	isValidTableName,
 	loadRecordOptions,
@@ -16,6 +17,8 @@ import {
 	patchRecord,
 	queryEntities,
 	queryLevels,
+	tableOfId,
+	validateRecordId,
 	type RecordOption
 } from '$lib/server/data';
 import { buildMapCrudMeta, withoutTables, type MapCrudMeta } from '$lib/transform/map-crud';
@@ -85,6 +88,10 @@ const createMarkerViewSchema = z.object({
 	description: z.string().default(''),
 	image: z.string().optional()
 });
+
+const deleteMarkerSchema = z.object({ id: z.string().default('') });
+
+const updateMarkerViewSchema = z.object({ id: z.string().default('') }).catchall(z.string());
 
 /** Parse a Point GeoJSON string → `{ x, y }`, or null when invalid. */
 function parsePointGeoJson(raw: string): { x: number; y: number } | null {
@@ -504,6 +511,84 @@ export const actions: Actions = {
 				image: parsed.data.image?.trim() || null
 			});
 			return { ok: true as const, id: result.viewId };
+		} catch (err) {
+			return failFromError(err);
+		}
+	},
+
+	/**
+	 * Delete a `markers` record from the properties panel. Its `marker_views`
+	 * rows are left untouched (dangling back-references remain).
+	 */
+	deleteMarker: async ({ request, locals, fetch }) => {
+		const form = Object.fromEntries((await request.formData()).entries()) as Record<string, string>;
+		const parsed = deleteMarkerSchema.safeParse(form);
+		if (!parsed.success) {
+			return fail(400, { code: 'invalid_form', message: 'Invalid form data' });
+		}
+		if (!parsed.data.id.trim()) {
+			return fail(400, { code: 'invalid_form', message: 'id is required' });
+		}
+
+		try {
+			if (!locals.session?.isConnected) {
+				throw new MutateError(503, 'db_unavailable', 'Database unavailable');
+			}
+			const config = await resolveAppConfig(locals.session);
+			const roles = await getUserRoles(locals.selection.namespace, locals.user, fetch);
+			assertCanEdit(roles);
+
+			const entity = entityByName(config, 'markers');
+			if (!entity) {
+				throw new MutateError(404, 'unknown_table', 'Unknown table: markers');
+			}
+
+			const recordId = validateRecordId(parsed.data.id.trim());
+			if (tableOfId(recordId) !== 'markers') {
+				throw new MutateError(400, 'invalid_id', 'id must reference a markers record');
+			}
+
+			await deleteRecord(locals.session, entity, recordId);
+			return { ok: true as const };
+		} catch (err) {
+			return failFromError(err);
+		}
+	},
+
+	/**
+	 * Patch fields on a `marker_views` row (in-place `user_description` edit).
+	 */
+	updateMarkerView: async ({ request, locals, fetch }) => {
+		const form = Object.fromEntries((await request.formData()).entries()) as Record<string, string>;
+		const parsed = updateMarkerViewSchema.safeParse(form);
+		if (!parsed.success) {
+			return fail(400, { code: 'invalid_form', message: 'Invalid form data' });
+		}
+		const { id, ...values } = parsed.data;
+		if (!id.trim()) {
+			return fail(400, { code: 'invalid_form', message: 'id is required' });
+		}
+
+		try {
+			if (!locals.session?.isConnected) {
+				throw new MutateError(503, 'db_unavailable', 'Database unavailable');
+			}
+			const config = await resolveAppConfig(locals.session);
+			const roles = await getUserRoles(locals.selection.namespace, locals.user, fetch);
+			assertCanEdit(roles);
+
+			const entity = entityByName(config, 'marker_views');
+			if (!entity) {
+				throw new MutateError(404, 'unknown_table', 'Unknown table: marker_views');
+			}
+
+			const recordId = validateRecordId(id.trim());
+			if (tableOfId(recordId) !== 'marker_views') {
+				throw new MutateError(400, 'invalid_id', 'id must reference a marker_views record');
+			}
+
+			await patchRecord(locals.session, entity, recordId, values);
+			return { ok: true as const, id: recordId };
 		} catch (err) {
 			return failFromError(err);
 		}
