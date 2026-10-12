@@ -12,6 +12,8 @@ import {
 	MutateError,
 	patchRecord,
 	queryEntities,
+	replaceRecordImageFile,
+	tableOfId,
 	type RecordOption
 } from '$lib/server/data';
 import { resolveAppConfig } from '$lib/server/config';
@@ -26,6 +28,11 @@ const updateCellSchema = z.object({
 });
 const addRowSchema = z.record(z.string(), z.string());
 const deleteRowSchema = z.object({ table: z.string().default(''), id: z.string().default('') });
+const replaceImageSchema = z.object({
+	id: z.string().default(''),
+	field: z.string().default(''),
+	data: z.string().default('')
+});
 
 export type TableOption = {
 	name: string;
@@ -182,6 +189,29 @@ export const actions: Actions = {
 		try {
 			const entity = await resolveForWrite(locals, fetch, table);
 			await deleteRecord(locals.session!, entity, id);
+			return { ok: true };
+		} catch (error) {
+			return failFromError(error);
+		}
+	},
+
+	/** Replace the image referenced by an editable image field (same filename). */
+	replaceImage: async ({ request, locals, fetch }) => {
+		const parsed = replaceImageSchema.safeParse(
+			Object.fromEntries((await request.formData()).entries())
+		);
+		if (!parsed.success) {
+			return fail(400, { code: 'invalid_form', message: 'Invalid form data' });
+		}
+		const { id, field, data } = parsed.data;
+
+		try {
+			if (!id.trim() || !field.trim() || !data.trim()) {
+				throw new MutateError(400, 'invalid_form', 'id, field, and data are required');
+			}
+			const table = tableOfId(id.trim());
+			const entity = await resolveForWrite(locals, fetch, table);
+			await replaceRecordImageFile(locals.session!, entity, id.trim(), field.trim(), data);
 			return { ok: true };
 		} catch (error) {
 			return failFromError(error);
