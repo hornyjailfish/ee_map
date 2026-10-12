@@ -75,8 +75,9 @@ DEFINE FIELD generated_description ON marker_views TYPE string VALUE {
     ].filter(|$v| $v IS NOT NONE).join(', ');
     RETURN $parts;
 };
-DEFINE FIELD text_embedding ON marker_views TYPE array<float> | none;
-DEFINE FIELD image_embedding ON marker_views TYPE array<float> | none;
+-- DEFINE FIELD text_embedding ON marker_views TYPE array<float> | none;
+-- DEFINE FIELD image_embedding ON marker_views TYPE array<float> | none;
+DEFINE FIELD embedding ON marker_views TYPE array<float> | none;
 DEFINE FIELD image_url ON marker_views TYPE string | none ;
 # DEFINE FIELD image_url ON marker_views TYPE string | none ASSERT $value IS NONE OR <regex> '^f"images:/.*"$' = $value;
 -- СЧЕТЧИК ВЕРСИЙ: при любом реальном изменении текста/картинки число растет на 1

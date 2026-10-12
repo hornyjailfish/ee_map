@@ -39,7 +39,10 @@ DEFINE INDEX unique_marker_data
     UNIQUE;
 
 # embedding indexes dimension uncompressed jinav5
-DEFINE INDEX idx_text
-    ON marker_views COLUMNS text_embedding HNSW DIMENSION 768 DIST COSINE;
-DEFINE INDEX idx_image
-    ON marker_views COLUMNS image_embedding HNSW DIMENSION 768 DIST COSINE;
+-- DEFINE INDEX idx_text
+--     ON marker_views COLUMNS text_embedding HNSW DIMENSION 768 DIST COSINE;
+-- DEFINE INDEX idx_image
+--     ON marker_views COLUMNS image_embedding HNSW DIMENSION 768 DIST COSINE;
+
+DEFINE INDEX idx_views
+    ON marker_views COLUMNS embedding HNSW DIMENSION 768 DIST COSINE;

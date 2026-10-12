@@ -26,7 +26,10 @@ UPDATE app_config:main SET
 			order: ['user_description', 'marker', 'image_url', 'version'],
 			hide: ['text_embedding', 'image_embedding'],
 			readOnly: ['generated_description', 'version'],
-			sort: 'generated_description'
+			sort: 'generated_description',
+			fields: {
+				image_url: { editor: 'image' }
+			}
 		}
 	},
 	map.layers.markers = {
