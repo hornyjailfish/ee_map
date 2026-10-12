@@ -358,7 +358,7 @@ function unionBBoxes(
 	return [minX, minY, maxX, maxY];
 }
 
-function mapLevels(
+export function mapLevels(
 	rows: Array<Record<string, unknown>>,
 	orderField: string
 ): Array<{ id: string; name?: string; ord?: number }> {

@@ -22,7 +22,7 @@ import {
 	type RecordOption
 } from '$lib/server/data';
 import { buildMapCrudMeta, withoutTables, type MapCrudMeta } from '$lib/transform/map-crud';
-import { toMap, type MapFeature, type MapViewModel } from '$lib/transform/to-map';
+import { toMap, mapLevels, type MapFeature, type MapViewModel } from '$lib/transform/to-map';
 import { entityByName } from '$lib/transform/to-table';
 import {
 	createMarker,
@@ -165,11 +165,23 @@ function layerTables(config: ResolvedConfig): string[] {
 	return [...names];
 }
 
-/** Parse `?level=`; empty / missing → null (all levels). */
-function parseLevelParam(raw: string | null): string | null {
+/** Sentinel `?level=` value for "all levels" (vs. an absent param = default floor). */
+const LEVEL_ALL = 'all';
+
+/**
+ * Parse `?level=`. Returns:
+ * - `{ mode: 'level', id }` for an explicit floor record id,
+ * - `{ mode: 'all' }` for `?level=all`,
+ * - `null` when the param is absent/empty (caller defaults to the first floor).
+ */
+function parseLevelParam(
+	raw: string | null
+): { mode: 'all' } | { mode: 'level'; id: string } | null {
 	if (raw == null) return null;
 	const trimmed = raw.trim();
-	return trimmed === '' ? null : trimmed;
+	if (trimmed === '') return null;
+	if (trimmed === LEVEL_ALL) return { mode: 'all' };
+	return { mode: 'level', id: trimmed };
 }
 
 async function resolveForMapWrite(
@@ -599,13 +611,16 @@ export const load: PageServerLoad = async ({ parent, locals, url }): Promise<Map
 	const layout = await parent();
 	const config = layout.config;
 	const configError = layout.configError ?? null;
-	const levelId = parseLevelParam(url.searchParams.get('level'));
+	const levelParam = parseLevelParam(url.searchParams.get('level'));
 	const roles = layout.userRoles ?? [];
 	const roleCanEdit = canEdit(roles);
 
+	// Level to surface on error paths, where no levels are loaded to default to.
+	const fallbackLevel = levelParam?.mode === 'level' ? levelParam.id : null;
+
 	if (!config) {
 		return emptyPage({
-			levelId,
+			levelId: fallbackLevel,
 			error:
 				configError ??
 				locals.dbError ??
@@ -617,7 +632,7 @@ export const load: PageServerLoad = async ({ parent, locals, url }): Promise<Map
 
 	if (!locals.session?.isConnected) {
 		return emptyPage({
-			levelId,
+			levelId: fallbackLevel,
 			error: locals.dbError ?? 'Database unavailable'
 		});
 	}
@@ -651,6 +666,19 @@ export const load: PageServerLoad = async ({ parent, locals, url }): Promise<Map
 			}
 		}
 
+		// Resolve the active floor: explicit `?level=<id>`, `?level=all`, or
+		// default to the first floor (lowest `ord`) when no param is present.
+		let levelId: string | null;
+		if (levelParam?.mode === 'level') {
+			levelId = levelParam.id;
+		} else if (levelParam?.mode === 'all') {
+			levelId = null;
+		} else {
+			// No `?level` param → default to the middle floor (by ord).
+			const ordered = mapLevels(levels ?? [], config.map.levelOrderField);
+			levelId = ordered.length > 0 ? ordered[Math.floor(ordered.length / 2)]!.id : null;
+		}
+
 		const view = slimView(
 			toMap({
 				config,
@@ -676,7 +704,7 @@ export const load: PageServerLoad = async ({ parent, locals, url }): Promise<Map
 		const message = err instanceof Error ? err.message : 'Failed to load map data';
 		console.warn('[map] load failed:', message);
 		return emptyPage({
-			levelId,
+			levelId: fallbackLevel,
 			crud,
 			error: message
 		});

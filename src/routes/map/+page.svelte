@@ -239,7 +239,8 @@
 		if (next) {
 			params.set('level', next);
 		} else {
-			params.delete('level');
+			// "All" is an explicit choice; absent `?level=` defaults to the first floor.
+			params.set('level', 'all');
 		}
 		const qs = params.toString();
 		void goto(qs ? `${href}?${qs}` : href, { keepFocus: true, noScroll: true });
@@ -306,7 +307,7 @@
 	}
 
 	function loadingLabel(): string {
-		if (!pendingLevel) return 'Loading all levels…';
+		if (!pendingLevel || pendingLevel === 'all') return 'Loading all levels…';
 		const match = levels.find((l) => l.id === pendingLevel);
 		return match ? `Loading ${levelLabel(match)}…` : 'Loading level…';
 	}

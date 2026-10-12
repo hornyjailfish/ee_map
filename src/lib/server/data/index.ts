@@ -58,3 +58,10 @@ export {
 	unrelateConnect,
 	type WritableField
 } from './mutate';
+
+export {
+	parseImageDataUrl,
+	parseImageFileRef,
+	replaceRecordImageFile,
+	type ImageFileRef
+} from './image-file';

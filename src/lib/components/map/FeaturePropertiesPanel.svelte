@@ -19,6 +19,7 @@
 	} from '$lib/client/editors';
 	import { Badge } from '$lib/components/ui/badge/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
+	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import * as Field from '$lib/components/ui/field/index.js';
 	import { Spinner } from '$lib/components/ui/spinner/index.js';
 	import { Textarea } from '$lib/components/ui/textarea/index.js';
@@ -66,6 +67,18 @@
 	let fieldErrors = $state<Record<string, string>>({});
 	let editingViewId = $state<string | null>(null);
 	let editingViewDescription = $state('');
+	let imagePreviewOpen = $state(false);
+	let imagePreviewSrc = $state<string | null>(null);
+	let imagePreviewTitle = $state<string | null>(null);
+
+	// Close the preview whenever the panel itself is dismissed.
+	$effect(() => {
+		if (!recordId) {
+			imagePreviewOpen = false;
+			imagePreviewSrc = null;
+			imagePreviewTitle = null;
+		}
+	});
 
 	const detailQuery = $derived(recordId ? getMapFeatureRecord({ id: recordId }) : null);
 	const detail = $derived(
@@ -154,6 +167,24 @@
 		return view.fields.find((f) => f.name === 'user_description')?.value ?? '';
 	}
 
+	/**
+	 * Marker views store a SurrealDB file reference (`images:<key>`) in
+	 * `image_url`. Only render a preview for well-formed refs — the row is
+	 * re-resolved server-side before anything is streamed back.
+	 */
+	function imageUrlFor(view: MapFeatureRecordDetail): string | null {
+		const raw = view.fields.find((f) => f.name === 'image_url')?.value?.trim() ?? '';
+		if (!raw) return null;
+		if (raw.includes('..') || !/^images:[A-Za-z0-9_.\-/]+$/.test(raw)) return null;
+		return `/map/marker-image?id=${encodeURIComponent(view.id)}`;
+	}
+
+	function openImagePreview(view: MapFeatureRecordDetail, src: string) {
+		imagePreviewSrc = src;
+		imagePreviewTitle = view.title;
+		imagePreviewOpen = true;
+	}
+
 	function startViewEdit(view: MapFeatureRecordDetail) {
 		editingViewId = view.id;
 		editingViewDescription = viewUserDescription(view);
@@ -207,7 +238,7 @@
 							type="button"
 							variant="outline"
 							size="icon"
-							class="size-6"
+							class="size-6 rounded-full"
 							title="Edit properties"
 							aria-label="Edit properties"
 							disabled={submitting}
@@ -221,7 +252,7 @@
 							type="button"
 							variant="outline"
 							size="icon"
-							class="size-6 rounded-full"
+							class="size-6 rounded-full hover:bg-emerald-200/50 hover:text-emerald-500"
 							title="Add marker view"
 							aria-label="Add marker view"
 							disabled={submitting}
@@ -235,7 +266,7 @@
 							type="button"
 							variant="outline"
 							size="icon"
-							class="size-6"
+							class="size-6 hover:bg-rose-200/50 hover:text-rose-500"
 							title="Remove marker"
 							aria-label="Remove marker"
 							disabled={submitting}
@@ -353,6 +384,7 @@
 
 		{#each detail?.markerViews ?? [] as view (view.id)}
 			{@const isEditing = editingViewId === view.id}
+			{@const imageUrl = imageUrlFor(view)}
 			<aside
 				class="flex max-h-[min(40vh,16rem)] shrink-0 flex-col overflow-hidden rounded-md border border-border bg-background/95 shadow-md backdrop-blur-sm"
 				aria-label="Associated marker view"
@@ -423,7 +455,7 @@
 				{:else}
 					<div class="min-h-0 flex-1 overflow-y-auto px-2 py-1.5">
 						<dl class="flex flex-col gap-0.5">
-							{#each view.fields.filter((f) => f.name !== 'id') as f (f.name)}
+							{#each view.fields.filter((f) => f.name !== 'id' && f.name !== 'image_url') as f (f.name)}
 								<div
 									class="grid grid-cols-[5.5rem_minmax(0,1fr)] items-baseline gap-x-2 gap-y-0 py-0.5"
 								>
@@ -433,12 +465,48 @@
 									</dd>
 								</div>
 							{:else}
-								<p class="text-[11px] text-muted-foreground">No properties on this record.</p>
+								{#if !imageUrl}
+									<p class="text-[11px] text-muted-foreground">No properties on this record.</p>
+								{/if}
 							{/each}
 						</dl>
+
+						{#if imageUrl}
+							<button
+								type="button"
+								class="mt-1.5 block w-full overflow-hidden rounded-md border border-border bg-muted/40 transition hover:opacity-90"
+								title="Open image"
+								aria-label={`Open image for ${view.title}`}
+								onclick={() => openImagePreview(view, imageUrl)}
+							>
+								<img
+									src={imageUrl}
+									alt={view.title}
+									loading="lazy"
+									class="aspect-video w-full object-cover"
+									onerror={(event) => {
+										(event.currentTarget as HTMLImageElement).style.display = 'none';
+									}}
+								/>
+							</button>
+						{/if}
 					</div>
 				{/if}
 			</aside>
 		{/each}
 	</div>
 {/if}
+
+<Dialog.Root bind:open={imagePreviewOpen}>
+	<Dialog.Content
+		class="max-h-[90vh] w-auto max-w-[min(92vw,64rem)] p-1 sm:max-w-[min(92vw,64rem)]"
+	>
+		{#if imagePreviewSrc}
+			<img
+				src={imagePreviewSrc}
+				alt={imagePreviewTitle ?? 'Marker image'}
+				class="block max-h-[85vh] max-w-[min(88vw,62rem)] rounded-md object-contain"
+			/>
+		{/if}
+	</Dialog.Content>
+</Dialog.Root>

@@ -64,11 +64,12 @@ export interface Levels {
 
 export interface MarkerViews {
 	id: RecordId<'marker_views'>;
+	embedding?: number[];
 	generated_description: string;
-	image_embedding?: number[];
+	image_embedding: number[];
 	image_url?: string;
 	marker: RecordId<'markers'>;
-	text_embedding?: number[];
+	text_embedding: number[];
 	user_description?: string;
 	version: number;
 }

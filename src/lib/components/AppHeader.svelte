@@ -65,6 +65,7 @@
 	);
 	const showConfigNav = $derived(canOwn(roles));
 	const showAssignNav = $derived(canEdit(roles));
+	const showTasksNav = $derived(canEdit(roles));
 	const databases = $derived(
 		catalog.databases.length > 0 ? catalog.databases : [selection.database]
 	);
@@ -190,6 +191,21 @@
 						aria-current={assignActive ? 'page' : undefined}
 					>
 						Assign
+					</a>
+				{/if}
+				{#if showTasksNav}
+					{@const tasksActive = navActive('/tasks')}
+					<a
+						href={resolve('/tasks' as Pathname)}
+						class={cn(
+							'rounded-md px-2.5 py-1.5 text-sm transition-colors',
+							tasksActive
+								? 'bg-muted font-medium text-foreground'
+								: 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
+						)}
+						aria-current={tasksActive ? 'page' : undefined}
+					>
+						Tasks
 					</a>
 				{/if}
 				{#if showConfigNav}
