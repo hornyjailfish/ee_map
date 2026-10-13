@@ -114,6 +114,7 @@
 		f.set('levelId', mf.levelId);
 		if (mf.label !== undefined) f.set('label', mf.label);
 		if (mf.layerGroup !== undefined) f.set('layerGroup', mf.layerGroup);
+		if (mf.styleVariant !== undefined) f.set('styleVariant', mf.styleVariant);
 		return f;
 	}
 
@@ -320,7 +321,8 @@
 						const styleKey =
 							(olFeature.get('styleKey') as string | undefined) ?? layerView.styleKey;
 						const focused = id != null && String(id) === focusBox.id;
-						const base = styleFor(styleKey, { focused });
+						const variant = olFeature.get('styleVariant') as string | undefined;
+						const base = styleFor(styleKey, { focused, variant });
 						// Show corner + mid-edge handles on the focused feature while Edit is active
 						if (focused && toolBox.mode === 'modify') {
 							return withVertexHandles(base, olFeature);

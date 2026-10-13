@@ -256,6 +256,7 @@ export async function createMarkerView(
 	}
 
 	if (image) {
+	  console.log(image)
 		try {
 			await session.query('RETURN file::put($ref, $data)', { ref: image.ref, data: image.bytes });
 		} catch (error) {

@@ -24,6 +24,11 @@ export type MapFeature = {
 	styleKey: string;
 	zIndex: number;
 	layerGroup?: string;
+	/**
+	 * Optional behavior key that refines `styleKey` per feature (e.g. an embedding
+	 * status that recolours a point). Resolved by the style registry; opaque here.
+	 */
+	styleVariant?: string;
 };
 
 export type MapLayerView = {
@@ -307,6 +312,27 @@ function buildLayerView(
 	}
 
 	return view;
+}
+
+/**
+ * Attach a per-feature `styleVariant` from a feature-id → variant map (e.g. the
+ * marker embedding status map). Features without a mapped id are left untouched.
+ * Runs after {@link toMap}; does not mutate the input map.
+ */
+export function applyStyleVariants(
+	view: MapViewModel,
+	variantByFeatureId: ReadonlyMap<string, string> | Record<string, string>
+): void {
+	const lookup = (id: string): string | undefined =>
+		variantByFeatureId instanceof Map
+			? variantByFeatureId.get(id)
+			: (variantByFeatureId as Record<string, string>)[id];
+	for (const layer of view.layers) {
+		for (const feature of layer.features) {
+			const variant = lookup(feature.id);
+			if (variant) feature.styleVariant = variant;
+		}
+	}
 }
 
 function levelFromRow(value: unknown): string | null {
