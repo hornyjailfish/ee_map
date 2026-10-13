@@ -22,11 +22,18 @@ import {
 	type RecordOption
 } from '$lib/server/data';
 import { buildMapCrudMeta, withoutTables, type MapCrudMeta } from '$lib/transform/map-crud';
-import { toMap, mapLevels, type MapFeature, type MapViewModel } from '$lib/transform/to-map';
+import {
+	toMap,
+	mapLevels,
+	applyStyleVariants,
+	type MapFeature,
+	type MapViewModel
+} from '$lib/transform/to-map';
 import { entityByName } from '$lib/transform/to-table';
 import {
 	createMarker,
 	createMarkerView,
+	loadMarkerEmbeddingStatuses,
 	resolveMarkerContext,
 	type MarkerContext
 } from '$lib/server/embedding';
@@ -142,6 +149,7 @@ function slimFeature(feature: MapFeature): MapFeature {
 
 	if (feature.label !== undefined) slim.label = feature.label;
 	if (feature.layerGroup !== undefined) slim.layerGroup = feature.layerGroup;
+	if (feature.styleVariant !== undefined) slim.styleVariant = feature.styleVariant;
 
 	return slim;
 }
@@ -679,14 +687,24 @@ export const load: PageServerLoad = async ({ parent, locals, url }): Promise<Map
 			levelId = ordered.length > 0 ? ordered[Math.floor(ordered.length / 2)]!.id : null;
 		}
 
-		const view = slimView(
-			toMap({
-				config,
-				entities,
-				levels,
-				levelId
-			})
-		);
+		const model = toMap({
+			config,
+			entities,
+			levels,
+			levelId
+		});
+
+		// Recolour marker pins by embedding status (aggregated across each marker's
+		// views). Non-fatal: a status failure leaves pins on the default colour.
+		try {
+			const statusById = await loadMarkerEmbeddingStatuses(session);
+			applyStyleVariants(model, statusById);
+		} catch (err) {
+			const message = err instanceof Error ? err.message : 'Failed to load embedding status';
+			console.warn('[map] marker embedding status failed:', message);
+		}
+
+		const view = slimView(model);
 
 		let recordOptionsByTable: Record<string, Record<string, RecordOption[]>> = {};
 		if (crud && crud.drawTargets.some((t) => t.canCreate)) {

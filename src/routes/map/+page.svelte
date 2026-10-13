@@ -809,6 +809,32 @@
 				{onModifyEnd}
 				onMapReady={(m) => (mapInstance = m)}
 			/>
+			<!-- Marker embedding-status legend (recolour via marker-status / styles) -->
+			<aside
+				class="pointer-events-none absolute bottom-2 left-2 z-20 rounded-md border border-border bg-background/90 px-2.5 py-2 shadow-sm"
+				aria-label="Marker embedding status legend"
+			>
+				<p class="mb-1 text-[10px] font-semibold tracking-wide text-muted-foreground uppercase">
+					Marker status
+				</p>
+				<ul class="flex flex-col gap-1 text-[11px] text-muted-foreground">
+					<li class="flex items-center gap-1.5">
+						<span class="size-2.5 rounded-full" style="background:#22c55e"></span> Done
+					</li>
+					<li class="flex items-center gap-1.5">
+						<span class="size-2.5 rounded-full" style="background:#3b82f6"></span> Processing / pending
+					</li>
+					<li class="flex items-center gap-1.5">
+						<span class="size-2.5 rounded-full" style="background:#f59e0b"></span> Version mismatch
+					</li>
+					<li class="flex items-center gap-1.5">
+						<span class="size-2.5 rounded-full" style="background:#ef4444"></span> Failed
+					</li>
+					<li class="flex items-center gap-1.5">
+						<span class="size-2.5 rounded-full" style="background:#94a3b8"></span> No views
+					</li>
+				</ul>
+			</aside>
 			{#if appUi.focusedId && !createOpen}
 				<svelte:boundary>
 					{#snippet failed(error, reset)}

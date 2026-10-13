@@ -7,3 +7,12 @@ export {
 	type CreateMarkerResult,
 	type CreateMarkerViewInput
 } from './marker-mutate';
+
+export {
+	loadMarkerEmbeddingStatuses,
+	aggregateMarkerStatus,
+	classifyView,
+	type MarkerEmbeddingStatus,
+	type MarkerViewState,
+	type ViewEmbeddingState
+} from './marker-status';
