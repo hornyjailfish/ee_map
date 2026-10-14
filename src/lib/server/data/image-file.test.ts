@@ -1,28 +1,23 @@
 import { describe, it, expect } from 'vitest';
+import { FileRef } from 'surrealdb';
 import { parseImageDataUrl, parseImageFileRef } from './image-file';
 
 describe('parseImageFileRef', () => {
-	it('accepts a plain images bucket reference', () => {
-		expect(parseImageFileRef('images:bca23145-1a1e-4838-99b7-e4c7d9c54cc2.jpg')).toEqual({
-			bucket: 'images',
-			key: 'bca23145-1a1e-4838-99b7-e4c7d9c54cc2.jpg'
-		});
+	it('accepts an images bucket FileRef', () => {
+		const ref = new FileRef('images', 'bca23145-1a1e-4838-99b7-e4c7d9c54cc2.jpg');
+		expect(parseImageFileRef(ref)).toBe(ref);
 	});
 
 	it('accepts nested keys with slashes', () => {
-		expect(parseImageFileRef('images:sub/dir/photo.webp')).toEqual({
-			bucket: 'images',
-			key: 'sub/dir/photo.webp'
-		});
+		const ref = new FileRef('images', 'sub/dir/photo.webp');
+		expect(parseImageFileRef(ref)).toBe(ref);
 	});
 
-	it('rejects traversal, other buckets, and malformed values', () => {
-		expect(parseImageFileRef('images:../secret.png')).toBeNull();
-		expect(parseImageFileRef('other:bucket.png')).toBeNull();
-		expect(parseImageFileRef('images:')).toBeNull();
-		expect(parseImageFileRef('images:bad key.png')).toBeNull();
-		expect(parseImageFileRef('no-colon')).toBeNull();
+	it('rejects other buckets and non-FileRef values', () => {
+		expect(parseImageFileRef(new FileRef('other', 'photo.png'))).toBeNull();
+		expect(parseImageFileRef('images:anything.jpg')).toBeNull();
 		expect(parseImageFileRef(42)).toBeNull();
+		expect(parseImageFileRef(null)).toBeNull();
 	});
 });
 

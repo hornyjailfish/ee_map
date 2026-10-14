@@ -62,6 +62,5 @@ export {
 export {
 	parseImageDataUrl,
 	parseImageFileRef,
-	replaceRecordImageFile,
-	type ImageFileRef
+	replaceRecordImageFile
 } from './image-file';

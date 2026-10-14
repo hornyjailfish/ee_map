@@ -180,7 +180,7 @@ export async function createMarker(
 			marker: new StringRecordId(id),
 			user_description: description || undefined
 		};
-		if (imageUrl) viewData.image_url = imageUrl;
+		if (image) viewData.image_url = image.ref;
 
 		const [view] = await session.query<[Record<string, unknown>[] | Record<string, unknown>]>(
 			'CREATE type::table("marker_views") CONTENT $view RETURN id',
@@ -238,13 +238,12 @@ export async function createMarkerView(
 
 	const description = typeof input.description === 'string' ? input.description : '';
 	const image = prepareImage(input.image ?? null);
-	const imageUrl = image ? image.ref.toString() : null;
 
 	const viewData: Record<string, unknown> = {
 		marker: new StringRecordId(markerId),
 		user_description: description || undefined
 	};
-	if (imageUrl) viewData.image_url = imageUrl;
+	if (image) viewData.image_url = image.ref;
 
 	const [view] = await session.query<[Record<string, unknown>[] | Record<string, unknown>]>(
 		'CREATE type::table("marker_views") CONTENT $view RETURN id',
@@ -256,7 +255,6 @@ export async function createMarkerView(
 	}
 
 	if (image) {
-	  console.log(image)
 		try {
 			await session.query('RETURN file::put($ref, $data)', { ref: image.ref, data: image.bytes });
 		} catch (error) {

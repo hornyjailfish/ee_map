@@ -1,11 +1,11 @@
 /**
  * Image file write seam for editable image fields (e.g. `marker_views.image_url`).
  *
- * Images live in the SurrealDB `images` bucket and are referenced by the field
- * value `images:<key>`. Replacing an image overwrites the bytes at that same key
- * via `file::put`, so the stored filename (and `image_url` value) never changes —
- * only the underlying bytes do. The marker_views `version` counter is bumped
- * afterwards so the separate embedding pipeline re-processes the new bytes.
+ * Images live in the SurrealDB `images` bucket and are referenced by a `file`
+ * value (the SDK's `FileRef`). Replacing an image overwrites the bytes at that
+ * same key via `file::put`, so the stored reference never changes — only the
+ * underlying bytes do. The marker_views `version` counter is bumped afterwards
+ * so the separate embedding pipeline re-processes the new bytes.
  */
 
 import { FileRef, type Surreal } from 'surrealdb';
@@ -15,25 +15,12 @@ import { MutateError, validateRecordId, writableFields } from './mutate';
 const IMAGE_BUCKET = 'images';
 /** Safe field identifier for embedding in a SurrealQL SELECT. */
 const FIELD_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
-/** Stored file key is a plain `images` bucket path without traversal. */
-const FILE_KEY_RE = /^[A-Za-z0-9_.\-/]+$/;
 
-export type ImageFileRef = { bucket: string; key: string };
-
-/** Parse a stored `images:<key>` file reference; null when not a plain images path. */
-export function parseImageFileRef(value: unknown): ImageFileRef | null {
-	if (typeof value !== 'string') return null;
-
-	const trimmed = value.trim();
-	const colon = trimmed.indexOf(':');
-	if (colon <= 0 || colon === trimmed.length - 1) return null;
-
-	const bucket = trimmed.slice(0, colon);
-	const key = trimmed.slice(colon + 1);
-	if (bucket !== IMAGE_BUCKET || !key || key.includes('..')) return null;
-	if (!FILE_KEY_RE.test(key)) return null;
-
-	return { bucket, key };
+/** A stored `file` value, decoded by the SDK into a `FileRef` (images bucket). */
+export function parseImageFileRef(value: unknown): FileRef | null {
+	if (!(value instanceof FileRef)) return null;
+	if (value.bucket !== IMAGE_BUCKET || !value.key) return null;
+	return value;
 }
 
 /** Parse a base64 image data URL into raw bytes; null when malformed / non-image. */
@@ -86,7 +73,7 @@ export async function replaceRecordImageFile(
 
 	const recordId = validateRecordId(id);
 
-	// Read the current value → must be a well-formed `images:<key>` reference.
+	// Read the current value → must be a stored `images` file reference.
 	const [rows] = await session.query<[Record<string, unknown>[]]>(
 		`SELECT ${fieldName} FROM type::record($id)`,
 		{ id: recordId }
@@ -97,7 +84,7 @@ export async function replaceRecordImageFile(
 	}
 
 	await session.query('RETURN file::put($ref, $data)', {
-		ref: new FileRef(ref.bucket, ref.key),
+		ref,
 		data: image.bytes
 	});
 

@@ -67,7 +67,7 @@ export interface MarkerViews {
 	embedding?: number[];
 	generated_description: string;
 	image_embedding: number[];
-	image_url?: string;
+	image_url?: unknown;
 	marker: RecordId<'markers'>;
 	text_embedding: number[];
 	user_description?: string;

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-10-04T23:37:00.2462602Z",
+  "generatedAt": "2026-10-13T06:57:06.8141237Z",
   "namespace": "main",
   "database": "main",
   "tables": [
@@ -812,21 +812,8 @@
       "kind": "NORMAL",
       "fields": [
         {
-          "name": "generated_description",
-          "define": "DEFINE FIELD generated_description ON marker_views TYPE string VALUE { LET $aliases = (IF marker.closest_shop.aliases THEN marker.closest_shop.aliases.join(', ') ELSE NONE END); LET $parts = [marker.level.name, marker.zone.name, marker.closest_shop.area.name, marker.closest_shop.name, $aliases, user_description].filter(|$v: any| $v != NONE).join(', '); RETURN $parts; } PERMISSIONS FULL",
-          "type": {
-            "kind": "primitive",
-            "name": "string"
-          },
-          "optional": false,
-          "flexible": false,
-          "readonly": false,
-          "hasDefault": false,
-          "rawType": "string"
-        },
-        {
-          "name": "image_embedding",
-          "define": "DEFINE FIELD image_embedding ON marker_views TYPE array<float> | none PERMISSIONS FULL",
+          "name": "embedding",
+          "define": "DEFINE FIELD embedding ON marker_views TYPE array<float> | none PERMISSIONS FULL",
           "type": {
             "kind": "array",
             "inner": {
@@ -840,6 +827,32 @@
           "readonly": false,
           "hasDefault": false,
           "rawType": "array<float> | none"
+        },
+        {
+          "name": "embedding.*",
+          "define": "DEFINE FIELD embedding.* ON marker_views TYPE float PERMISSIONS FULL",
+          "type": {
+            "kind": "primitive",
+            "name": "float"
+          },
+          "optional": false,
+          "flexible": false,
+          "readonly": false,
+          "hasDefault": false,
+          "rawType": "float"
+        },
+        {
+          "name": "generated_description",
+          "define": "DEFINE FIELD generated_description ON marker_views TYPE string VALUE { LET $aliases = (IF marker.closest_shop.aliases THEN marker.closest_shop.aliases.join(', ') ELSE NONE END); LET $parts = [marker.level.name, marker.zone.name, marker.closest_shop.area.name, marker.closest_shop.name, $aliases, user_description].filter(|$v: any| $v != NONE).join(', '); RETURN $parts; } PERMISSIONS FULL",
+          "type": {
+            "kind": "primitive",
+            "name": "string"
+          },
+          "optional": false,
+          "flexible": false,
+          "readonly": false,
+          "hasDefault": false,
+          "rawType": "string"
         },
         {
           "name": "image_embedding.*",
@@ -883,23 +896,6 @@
           "rawType": "record<markers>"
         },
         {
-          "name": "text_embedding",
-          "define": "DEFINE FIELD text_embedding ON marker_views TYPE array<float> | none PERMISSIONS FULL",
-          "type": {
-            "kind": "array",
-            "inner": {
-              "kind": "primitive",
-              "name": "float"
-            },
-            "max": null
-          },
-          "optional": true,
-          "flexible": false,
-          "readonly": false,
-          "hasDefault": false,
-          "rawType": "array<float> | none"
-        },
-        {
           "name": "text_embedding.*",
           "define": "DEFINE FIELD text_embedding.* ON marker_views TYPE float PERMISSIONS FULL",
           "type": {
@@ -927,7 +923,7 @@
         },
         {
           "name": "version",
-          "define": "DEFINE FIELD version ON marker_views TYPE int DEFAULT 0 VALUE ($value ?? 0) + 1 PERMISSIONS FULL",
+          "define": "DEFINE FIELD version ON marker_views TYPE int VALUE ($value ?? 0) + 1 PERMISSIONS FULL",
           "type": {
             "kind": "primitive",
             "name": "int"
@@ -935,7 +931,7 @@
           "optional": false,
           "flexible": false,
           "readonly": false,
-          "hasDefault": true,
+          "hasDefault": false,
           "rawType": "int"
         }
       ],
@@ -951,12 +947,8 @@
       ],
       "indexes": [
         {
-          "name": "idx_image",
-          "define": "DEFINE INDEX idx_image ON marker_views FIELDS image_embedding HNSW DIMENSION 768 DIST COSINE TYPE F32 EFC 150 M 12 M0 24 LM 0.40242960438184466f"
-        },
-        {
-          "name": "idx_text",
-          "define": "DEFINE INDEX idx_text ON marker_views FIELDS text_embedding HNSW DIMENSION 768 DIST COSINE TYPE F32 EFC 150 M 12 M0 24 LM 0.40242960438184466f"
+          "name": "idx_views",
+          "define": "DEFINE INDEX idx_views ON marker_views FIELDS embedding HNSW DIMENSION 768 DIST COSINE TYPE F32 EFC 150 M 12 M0 24 LM 0.40242960438184466f"
         }
       ]
     },
@@ -1387,7 +1379,7 @@
     },
     {
       "name": "images",
-      "define": "DEFINE BUCKET images BACKEND 'file:///C:/Users/User/gits/ee_map/data/bucket' PERMISSIONS WHERE $auth.id != NONE"
+      "define": "DEFINE BUCKET images BACKEND 'file:///C:/Users/User/gits/ee_map/data/bucket?lowercase_paths=true' PERMISSIONS WHERE $auth.id != NONE"
     }
   ],
   "sequences": [],
