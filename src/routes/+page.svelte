@@ -24,6 +24,11 @@
 		{ href: '/graph', label: 'Graph', blurb: 'Relations and hierarchy' },
 		{ href: '/map', label: 'Map', blurb: 'Spatial layout' }
 	] as const;
+
+	const roles = $derived(
+		data.catalog.users.find((u) => u.name === data.user)?.roles ?? []
+	);
+	const canViewTasks = $derived(roles.some((r) => r === 'EDITOR' || r === 'OWNER'));
 </script>
 
 <section class="mx-auto h-full max-w-3xl space-y-6 overflow-auto px-4 py-8">
@@ -48,6 +53,15 @@
 				<p class="mt-1 text-xs text-muted-foreground">{view.blurb}</p>
 			</a>
 		{/each}
+		{#if canViewTasks}
+			<a
+				href={resolve('/tasks')}
+				class="rounded-xl border border-border bg-card p-4 text-card-foreground shadow-sm transition-colors hover:bg-muted/40"
+			>
+				<div class="text-sm font-semibold tracking-tight">Tasks</div>
+				<p class="mt-1 text-xs text-muted-foreground">Marker embedding queue</p>
+			</a>
+		{/if}
 	</div>
 
 	<div class="rounded-xl border border-border bg-card p-5 text-card-foreground shadow-sm">

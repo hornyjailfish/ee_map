@@ -1,9 +1,10 @@
 <script lang="ts">
 	/**
-	 * Marker save dialog (embedding search dataset).
-	 * Shows the auto-generated context (level · zone · shop) and lets the editor
-	 * edit the final `description` before saving. Parent resolves context and
-	 * creates the marker via server actions.
+	 * Marker save dialog (indoor search dataset).
+	 * Shows where the marker landed (level · zone · shop badge) and lets the editor
+	 * fill `user_description` and optionally attach a reference photo, which is
+	 * uploaded to the `images` bucket. Parent resolves context and creates the
+	 * marker via server actions.
 	 */
 	import CircleAlertIcon from '@lucide/svelte/icons/circle-alert';
 	import ImagePlusIcon from '@lucide/svelte/icons/image-plus';
@@ -22,6 +23,9 @@
 		resolving?: boolean;
 		submitting?: boolean;
 		error?: string | null;
+		/** `marker` = new point; `view` = add a description row to an existing marker. */
+		mode?: 'marker' | 'view';
+		markerId?: string | null;
 		/** Called on submit with the final description and optional image data URL. */
 		onCreate?: (description: string, image: string | null) => void | Promise<void>;
 	};
@@ -32,6 +36,8 @@
 		resolving = false,
 		submitting = false,
 		error = null,
+		mode = 'marker',
+		markerId = null,
 		onCreate
 	}: Props = $props();
 
@@ -42,11 +48,11 @@
 	let fileInput = $state<HTMLInputElement | null>(null);
 	let wasOpen = false;
 
-	// Seed the editor when the dialog opens, before context resolves.
+	// Reset the form each time the dialog opens.
 	$effect(() => {
 		const isOpen = open;
 		if (isOpen && !wasOpen) {
-			description = context?.draftDescription ?? '';
+			description = '';
 			imageDataUrl = null;
 			imageName = null;
 			imageError = null;
@@ -54,19 +60,21 @@
 		wasOpen = isOpen;
 	});
 
-	// When context resolves while open (after the draw), fill the draft — but
-	// never clobber text the editor has already started typing.
-	$effect(() => {
-		if (open && context?.draftDescription && description.trim() === '') {
-			description = context.draftDescription;
-		}
-	});
-
 	const contextLine = $derived(
 		[context?.levelName, context?.zoneName, context?.shopName ?? context?.rentName]
 			.filter((p): p is string => typeof p === 'string' && p.trim() !== '')
 			.join(' · ')
 	);
+
+	const isView = $derived(mode === 'view');
+	const title = $derived(isView ? 'Add marker view' : 'Place search marker');
+	const dialogDescription = $derived(
+		isView
+			? 'Add a description row to this marker. Optionally attach a reference photo.'
+			: 'Add a point to the indoor search dataset. Write a short description and optionally attach a reference photo.'
+	);
+	const submitLabel = $derived(isView ? 'Add view' : 'Save marker');
+	const errorTitle = $derived(isView ? 'Add view failed' : 'Save failed');
 
 	const canSubmit = $derived(!submitting && !resolving);
 
@@ -114,16 +122,17 @@
 <Dialog.Root bind:open>
 	<Dialog.Content class="flex max-h-[min(90vh,40rem)] flex-col gap-4 overflow-hidden sm:max-w-md">
 		<Dialog.Header>
-			<Dialog.Title>Place search marker</Dialog.Title>
-			<Dialog.Description>
-				Add a point to the indoor search dataset. Descriptions are matched by text and image
-				embeddings — the editor can refine the auto-generated draft.
-			</Dialog.Description>
+			<Dialog.Title>{title}</Dialog.Title>
+			<Dialog.Description>{dialogDescription}</Dialog.Description>
 		</Dialog.Header>
 
 		<div class="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-0.5">
 			<div class="flex flex-wrap items-center gap-1.5">
-				{#if resolving}
+				{#if isView}
+					{#if markerId}
+						<Badge variant="secondary">Linked to <span class="font-mono">{markerId}</span></Badge>
+					{/if}
+				{:else if resolving}
 					<span class="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
 						<Spinner class="size-3" data-icon="inline-start" />
 						Resolving map context…
@@ -136,17 +145,17 @@
 			</div>
 
 			<Field.Field>
-				<Field.Label for="marker-description">Description</Field.Label>
+				<Field.Label for="marker-description">User description</Field.Label>
 				<Textarea
 					id="marker-description"
 					bind:value={description}
-					placeholder="e.g. Level 2, North, Starbucks"
+					placeholder="e.g. cash machines near the entrance"
 					rows={4}
 					disabled={submitting || resolving}
 					autocomplete="off"
 				/>
 				<Field.FieldDescription>
-					Embedded as text — keep it specific and human-readable.
+					The description shown for this marker and matched by search.
 				</Field.FieldDescription>
 			</Field.Field>
 
@@ -194,16 +203,16 @@
 				{#if imageError}
 					<Field.Error>{imageError}</Field.Error>
 				{/if}
-				<Field.FieldDescription>
-					Optional reference photo — embedded for image search.
-				</Field.FieldDescription>
+				<Field.FieldDescription
+					>Optional reference photo — stored in the images bucket.</Field.FieldDescription
+				>
 			</Field.Field>
 		</div>
 
 		{#if error}
 			<Alert.Root variant="destructive">
 				<CircleAlertIcon />
-				<Alert.Title>Save failed</Alert.Title>
+				<Alert.Title>{errorTitle}</Alert.Title>
 				<Alert.Description>{error}</Alert.Description>
 			</Alert.Root>
 		{/if}
@@ -218,7 +227,7 @@
 				{#if submitting}
 					<Spinner class="size-3.5" data-icon="inline-start" />
 				{/if}
-				Save marker
+				{submitLabel}
 			</Button>
 		</Dialog.Footer>
 	</Dialog.Content>

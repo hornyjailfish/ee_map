@@ -24,6 +24,11 @@ export type MapFeature = {
 	styleKey: string;
 	zIndex: number;
 	layerGroup?: string;
+	/**
+	 * Optional behavior key that refines `styleKey` per feature (e.g. an embedding
+	 * status that recolours a point). Resolved by the style registry; opaque here.
+	 */
+	styleVariant?: string;
 };
 
 export type MapLayerView = {
@@ -55,10 +60,7 @@ export function normalizeGeometry(value: unknown): NormalizedGeometry {
 
 	// Surreal SDK Geometry* values expose GeoJSON via toJSON(), have a coordinates
 	// getter, but no own `type` — must call toJSON before treating as plain GeoJSON.
-	if (
-		typeof (obj as { toJSON?: unknown }).toJSON === 'function' &&
-		typeof obj.type !== 'string'
-	) {
+	if (typeof (obj as { toJSON?: unknown }).toJSON === 'function' && typeof obj.type !== 'string') {
 		try {
 			const json = (obj as { toJSON: () => unknown }).toJSON();
 			// Guard against pathological toJSON() returning the same object
@@ -224,6 +226,7 @@ export function toMap(input: {
 	levelId?: string | null;
 }): MapViewModel {
 	const { config, entities } = input;
+	// ???
 	const levelFilter =
 		input.levelId === undefined || input.levelId === null || input.levelId === ''
 			? null
@@ -262,19 +265,11 @@ function buildLayerView(
 	const features: MapFeature[] = [];
 
 	for (const row of rows) {
-	  // INFO: make sure proper style registred for different embedding statuses
-		// FIXME: default style
-    if (layer.table == 'embeddings') {
-      const styleMod = [layer.styleKey, row.embedding_status]
-      layer.styleKey = styleMod.join('_')
-    }
 		const geometry = normalizeGeometry(row[layer.geometryField]);
 		if (geometry.kind === 'empty') continue;
 
 		// Levels floor plan: row is the level itself (no FK field)
-		const levelId = layer.levelField
-			? levelFromRow(row[layer.levelField])
-			: levelFromRow(row.id);
+		const levelId = layer.levelField ? levelFromRow(row[layer.levelField]) : levelFromRow(row.id);
 
 		if (levelFilter !== null) {
 			if (levelId === null || levelId !== levelFilter) continue;
@@ -317,6 +312,27 @@ function buildLayerView(
 	}
 
 	return view;
+}
+
+/**
+ * Attach a per-feature `styleVariant` from a feature-id → variant map (e.g. the
+ * marker embedding status map). Features without a mapped id are left untouched.
+ * Runs after {@link toMap}; does not mutate the input map.
+ */
+export function applyStyleVariants(
+	view: MapViewModel,
+	variantByFeatureId: ReadonlyMap<string, string> | Record<string, string>
+): void {
+	const lookup = (id: string): string | undefined =>
+		variantByFeatureId instanceof Map
+			? variantByFeatureId.get(id)
+			: (variantByFeatureId as Record<string, string>)[id];
+	for (const layer of view.layers) {
+		for (const feature of layer.features) {
+			const variant = lookup(feature.id);
+			if (variant) feature.styleVariant = variant;
+		}
+	}
 }
 
 function levelFromRow(value: unknown): string | null {
@@ -368,7 +384,7 @@ function unionBBoxes(
 	return [minX, minY, maxX, maxY];
 }
 
-function mapLevels(
+export function mapLevels(
 	rows: Array<Record<string, unknown>>,
 	orderField: string
 ): Array<{ id: string; name?: string; ord?: number }> {

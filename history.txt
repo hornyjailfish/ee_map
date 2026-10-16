@@ -6,3 +6,5 @@ USE NS main DB main;
 UPDATE app_config:main SET  entities.levels.map = {    enabled: true,    geometryField: 'geometry',    layerGroup: 'background',    styleKey: 'levels',    zIndex: 0  },  entities.levels.table = {    order: ['ord', 'name', 'geometry'],    sort: 'ord'  };
 SELECT entities.levels FROM app_config:main;
 USE NS main DB main; SELECT entities.levels.map FROM app_config:main; SELECT count() FROM levels WHERE geometry IS NOT NONE GROUP ALL;
+SELECT id, marker, image_url FROM marker_views LIMIT 10;
+RETURN file::get(f"images:/bca23145-1a1e-4838-99b7-e4c7d9c54cc2.jpg");

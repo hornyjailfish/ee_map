@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-09-24T21:46:32.9420241Z",
+  "generatedAt": "2026-10-13T06:57:06.8141237Z",
   "namespace": "main",
   "database": "main",
   "tables": [
@@ -559,6 +559,15 @@
       ]
     },
     {
+      "name": "debug",
+      "define": "DEFINE TABLE debug TYPE ANY SCHEMALESS PERMISSIONS FULL",
+      "schemafull": false,
+      "kind": "ANY",
+      "fields": [],
+      "events": [],
+      "indexes": []
+    },
+    {
       "name": "electric_rooms",
       "define": "DEFINE TABLE electric_rooms TYPE NORMAL SCHEMAFULL PERMISSIONS FULL",
       "schemafull": true,
@@ -617,14 +626,29 @@
       ]
     },
     {
-      "name": "embeddings",
-      "define": "DEFINE TABLE embeddings TYPE NORMAL SCHEMAFULL PERMISSIONS NONE",
+      "name": "embedding_queue",
+      "define": "DEFINE TABLE embedding_queue TYPE NORMAL SCHEMAFULL PERMISSIONS FULL",
       "schemafull": true,
       "kind": "NORMAL",
       "fields": [
         {
-          "name": "description",
-          "define": "DEFINE FIELD description ON embeddings TYPE string | none PERMISSIONS FULL",
+          "name": "data",
+          "define": "DEFINE FIELD data ON embedding_queue TYPE record<marker_views> | none PERMISSIONS FULL",
+          "type": {
+            "kind": "record",
+            "tables": [
+              "marker_views"
+            ]
+          },
+          "optional": true,
+          "flexible": false,
+          "readonly": false,
+          "hasDefault": false,
+          "rawType": "record<marker_views> | none"
+        },
+        {
+          "name": "error_message",
+          "define": "DEFINE FIELD error_message ON embedding_queue TYPE string | none PERMISSIONS FULL",
           "type": {
             "kind": "primitive",
             "name": "string"
@@ -636,96 +660,68 @@
           "rawType": "string | none"
         },
         {
-          "name": "image",
-          "define": "DEFINE FIELD image ON embeddings TYPE string | none ASSERT $value = NONE OR <regex> '^f\"images:/.*\"$' = $value PERMISSIONS FULL",
+          "name": "status",
+          "define": "DEFINE FIELD status ON embedding_queue TYPE 'pending' | 'processing' | 'failed' | 'done' DEFAULT 'pending' PERMISSIONS FULL",
           "type": {
-            "kind": "primitive",
-            "name": "string"
-          },
-          "optional": true,
-          "flexible": false,
-          "readonly": false,
-          "hasDefault": false,
-          "rawType": "string | none"
-        },
-        {
-          "name": "image_embedding",
-          "define": "DEFINE FIELD image_embedding ON embeddings TYPE array<float> | none PERMISSIONS FULL",
-          "type": {
-            "kind": "array",
-            "inner": {
-              "kind": "primitive",
-              "name": "float"
-            },
-            "max": null
-          },
-          "optional": true,
-          "flexible": false,
-          "readonly": false,
-          "hasDefault": false,
-          "rawType": "array<float> | none"
-        },
-        {
-          "name": "image_embedding.*",
-          "define": "DEFINE FIELD image_embedding.* ON embeddings TYPE float PERMISSIONS FULL",
-          "type": {
-            "kind": "primitive",
-            "name": "float"
-          },
-          "optional": false,
-          "flexible": false,
-          "readonly": false,
-          "hasDefault": false,
-          "rawType": "float"
-        },
-        {
-          "name": "marker",
-          "define": "DEFINE FIELD marker ON embeddings TYPE geometry<point> PERMISSIONS FULL",
-          "type": {
-            "kind": "geometry",
-            "kinds": [
-              "point"
+            "kind": "union",
+            "variants": [
+              {
+                "kind": "literal",
+                "value": "pending"
+              },
+              {
+                "kind": "literal",
+                "value": "processing"
+              },
+              {
+                "kind": "literal",
+                "value": "failed"
+              },
+              {
+                "kind": "literal",
+                "value": "done"
+              }
             ]
           },
           "optional": false,
           "flexible": false,
           "readonly": false,
-          "hasDefault": false,
-          "rawType": "geometry<point>"
+          "hasDefault": true,
+          "rawType": "'pending' | 'processing' | 'failed' | 'done'"
         },
         {
-          "name": "text_embedding",
-          "define": "DEFINE FIELD text_embedding ON embeddings TYPE array<float> | none PERMISSIONS FULL",
+          "name": "updated_at",
+          "define": "DEFINE FIELD updated_at ON embedding_queue VALUE time::now() PERMISSIONS FULL",
           "type": {
-            "kind": "array",
-            "inner": {
-              "kind": "primitive",
-              "name": "float"
-            },
-            "max": null
+            "kind": "unknown",
+            "source": ""
           },
-          "optional": true,
+          "optional": false,
           "flexible": false,
           "readonly": false,
-          "hasDefault": false,
-          "rawType": "array<float> | none"
+          "hasDefault": false
         },
         {
-          "name": "text_embedding.*",
-          "define": "DEFINE FIELD text_embedding.* ON embeddings TYPE float PERMISSIONS FULL",
+          "name": "version_snapshot",
+          "define": "DEFINE FIELD version_snapshot ON embedding_queue TYPE int PERMISSIONS FULL",
           "type": {
             "kind": "primitive",
-            "name": "float"
+            "name": "int"
           },
           "optional": false,
           "flexible": false,
           "readonly": false,
           "hasDefault": false,
-          "rawType": "float"
+          "rawType": "int"
         }
       ],
       "events": [],
-      "indexes": []
+      "indexes": [
+        {
+          "name": "unique_marker_data",
+          "define": "DEFINE INDEX unique_marker_data ON embedding_queue FIELDS data UNIQUE"
+        }
+      ]
     },
     {
       "name": "levels",
@@ -760,6 +756,21 @@
           "rawType": "geometry<multiline> | geometry<polygon> | none"
         },
         {
+          "name": "geometry.*",
+          "define": "DEFINE FIELD geometry.* ON levels TYPE geometry<line> PERMISSIONS FULL",
+          "type": {
+            "kind": "geometry",
+            "kinds": [
+              "line"
+            ]
+          },
+          "optional": false,
+          "flexible": false,
+          "readonly": false,
+          "hasDefault": false,
+          "rawType": "geometry<line>"
+        },
+        {
           "name": "name",
           "define": "DEFINE FIELD name ON levels TYPE string PERMISSIONS FULL",
           "type": {
@@ -786,7 +797,234 @@
           "rawType": "int"
         }
       ],
-      "events": [],
+      "events": [
+        {
+          "name": "regen_description",
+          "define": "DEFINE EVENT regen_description ON levels WHEN $event != 'DELETE' AND $before.name != $after.name THEN { LET $markers = (SELECT VALUE id FROM markers WHERE level = $after.id); UPDATE marker_views SET version = $this.version WHERE marker INSIDE $markers; }"
+        }
+      ],
+      "indexes": []
+    },
+    {
+      "name": "marker_views",
+      "define": "DEFINE TABLE marker_views TYPE NORMAL SCHEMAFULL PERMISSIONS FULL",
+      "schemafull": true,
+      "kind": "NORMAL",
+      "fields": [
+        {
+          "name": "embedding",
+          "define": "DEFINE FIELD embedding ON marker_views TYPE array<float> | none PERMISSIONS FULL",
+          "type": {
+            "kind": "array",
+            "inner": {
+              "kind": "primitive",
+              "name": "float"
+            },
+            "max": null
+          },
+          "optional": true,
+          "flexible": false,
+          "readonly": false,
+          "hasDefault": false,
+          "rawType": "array<float> | none"
+        },
+        {
+          "name": "embedding.*",
+          "define": "DEFINE FIELD embedding.* ON marker_views TYPE float PERMISSIONS FULL",
+          "type": {
+            "kind": "primitive",
+            "name": "float"
+          },
+          "optional": false,
+          "flexible": false,
+          "readonly": false,
+          "hasDefault": false,
+          "rawType": "float"
+        },
+        {
+          "name": "generated_description",
+          "define": "DEFINE FIELD generated_description ON marker_views TYPE string VALUE { LET $aliases = (IF marker.closest_shop.aliases THEN marker.closest_shop.aliases.join(', ') ELSE NONE END); LET $parts = [marker.level.name, marker.zone.name, marker.closest_shop.area.name, marker.closest_shop.name, $aliases, user_description].filter(|$v: any| $v != NONE).join(', '); RETURN $parts; } PERMISSIONS FULL",
+          "type": {
+            "kind": "primitive",
+            "name": "string"
+          },
+          "optional": false,
+          "flexible": false,
+          "readonly": false,
+          "hasDefault": false,
+          "rawType": "string"
+        },
+        {
+          "name": "image_embedding.*",
+          "define": "DEFINE FIELD image_embedding.* ON marker_views TYPE float PERMISSIONS FULL",
+          "type": {
+            "kind": "primitive",
+            "name": "float"
+          },
+          "optional": false,
+          "flexible": false,
+          "readonly": false,
+          "hasDefault": false,
+          "rawType": "float"
+        },
+        {
+          "name": "image_url",
+          "define": "DEFINE FIELD image_url ON marker_views TYPE string | none PERMISSIONS FULL",
+          "type": {
+            "kind": "primitive",
+            "name": "string"
+          },
+          "optional": true,
+          "flexible": false,
+          "readonly": false,
+          "hasDefault": false,
+          "rawType": "string | none"
+        },
+        {
+          "name": "marker",
+          "define": "DEFINE FIELD marker ON marker_views TYPE record<markers> REFERENCE ON DELETE IGNORE PERMISSIONS FULL",
+          "type": {
+            "kind": "record",
+            "tables": [
+              "markers"
+            ]
+          },
+          "optional": false,
+          "flexible": false,
+          "readonly": false,
+          "hasDefault": false,
+          "rawType": "record<markers>"
+        },
+        {
+          "name": "text_embedding.*",
+          "define": "DEFINE FIELD text_embedding.* ON marker_views TYPE float PERMISSIONS FULL",
+          "type": {
+            "kind": "primitive",
+            "name": "float"
+          },
+          "optional": false,
+          "flexible": false,
+          "readonly": false,
+          "hasDefault": false,
+          "rawType": "float"
+        },
+        {
+          "name": "user_description",
+          "define": "DEFINE FIELD user_description ON marker_views TYPE string | none PERMISSIONS FULL",
+          "type": {
+            "kind": "primitive",
+            "name": "string"
+          },
+          "optional": true,
+          "flexible": false,
+          "readonly": false,
+          "hasDefault": false,
+          "rawType": "string | none"
+        },
+        {
+          "name": "version",
+          "define": "DEFINE FIELD version ON marker_views TYPE int VALUE ($value ?? 0) + 1 PERMISSIONS FULL",
+          "type": {
+            "kind": "primitive",
+            "name": "int"
+          },
+          "optional": false,
+          "flexible": false,
+          "readonly": false,
+          "hasDefault": false,
+          "rawType": "int"
+        }
+      ],
+      "events": [
+        {
+          "name": "add_embedding_task",
+          "define": "DEFINE EVENT add_embedding_task ON marker_views WHEN $event != 'DELETE' AND ($before.generated_description != $after.generated_description OR $before.image_url != $after.image_url) THEN { LET $version = $after.version ?? $before.version + 1 ?? 1; UPSERT type::record('embedding_queue', record::id($after.id)) SET data = $after.id, version_snapshot = $version; }"
+        },
+        {
+          "name": "remove_embedding_task",
+          "define": "DEFINE EVENT remove_embedding_task ON marker_views WHEN $event == 'DELETE' THEN { DELETE type::record('embedding_queue', $before.id.id) }"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "idx_views",
+          "define": "DEFINE INDEX idx_views ON marker_views FIELDS embedding HNSW DIMENSION 768 DIST COSINE TYPE F32 EFC 150 M 12 M0 24 LM 0.40242960438184466f"
+        }
+      ]
+    },
+    {
+      "name": "markers",
+      "define": "DEFINE TABLE markers TYPE NORMAL SCHEMAFULL PERMISSIONS FULL",
+      "schemafull": true,
+      "kind": "NORMAL",
+      "fields": [
+        {
+          "name": "closest_shop",
+          "define": "DEFINE FIELD closest_shop ON markers TYPE record<shops> | none PERMISSIONS FULL",
+          "type": {
+            "kind": "record",
+            "tables": [
+              "shops"
+            ]
+          },
+          "optional": true,
+          "flexible": false,
+          "readonly": false,
+          "hasDefault": false,
+          "rawType": "record<shops> | none"
+        },
+        {
+          "name": "geometry",
+          "define": "DEFINE FIELD geometry ON markers TYPE geometry<point> PERMISSIONS FULL",
+          "type": {
+            "kind": "geometry",
+            "kinds": [
+              "point"
+            ]
+          },
+          "optional": false,
+          "flexible": false,
+          "readonly": false,
+          "hasDefault": false,
+          "rawType": "geometry<point>"
+        },
+        {
+          "name": "level",
+          "define": "DEFINE FIELD level ON markers TYPE record<levels> PERMISSIONS FULL",
+          "type": {
+            "kind": "record",
+            "tables": [
+              "levels"
+            ]
+          },
+          "optional": false,
+          "flexible": false,
+          "readonly": false,
+          "hasDefault": false,
+          "rawType": "record<levels>"
+        },
+        {
+          "name": "zone",
+          "define": "DEFINE FIELD zone ON markers TYPE record<zones> PERMISSIONS FULL",
+          "type": {
+            "kind": "record",
+            "tables": [
+              "zones"
+            ]
+          },
+          "optional": false,
+          "flexible": false,
+          "readonly": false,
+          "hasDefault": false,
+          "rawType": "record<zones>"
+        }
+      ],
+      "events": [
+        {
+          "name": "regen_description",
+          "define": "DEFINE EVENT regen_description ON markers WHEN $event != 'DELETE' AND ($before.level != $after.level OR $before.zone != $after.zone OR $before.closest_shop != $after.closest_shop) THEN { UPDATE marker_views SET version = $this.version WHERE marker = $after.id }"
+        }
+      ],
       "indexes": []
     },
     {
@@ -969,7 +1207,12 @@
           "rawType": "string"
         }
       ],
-      "events": [],
+      "events": [
+        {
+          "name": "regen_description",
+          "define": "DEFINE EVENT regen_description ON shops WHEN $before.name != $after.name OR $before.area != $after.area OR $before.aliases != $after.aliases THEN { LET $markers = (SELECT VALUE id FROM markers WHERE closest_shop = $after.id); UPDATE marker_views SET version = $this.version WHERE marker INSIDE $markers; }"
+        }
+      ],
       "indexes": [
         {
           "name": "unique_shops",
@@ -1070,7 +1313,12 @@
           "rawType": "string"
         }
       ],
-      "events": [],
+      "events": [
+        {
+          "name": "regen_description",
+          "define": "DEFINE EVENT regen_description ON zones WHEN $before.name != $after.name THEN { LET $markers = (SELECT VALUE id FROM markers WHERE zone = $after.id); UPDATE marker_views SET version = $this.version WHERE marker INSIDE $markers; }"
+        }
+      ],
       "indexes": []
     }
   ],
@@ -1118,19 +1366,6 @@
           "boards"
         ]
       }
-    },
-    {
-      "name": "fn::get_tables",
-      "define": "DEFINE FUNCTION fn::get_tables() -> array<string> { LET $info = (INFO FOR DATABASE); LET $out = []; FOR $table IN object::keys($info.tables) { LET $definition = $info.tables[$table]; LET $definition = string::words($definition); LET $filter = $definition.find_index('TYPE'); array::add($out, { name: $table, type: $definition[$filter + 1] }); }; RETURN $out; } COMMENT '' PERMISSIONS FULL",
-      "args": [],
-      "returns": {
-        "kind": "array",
-        "inner": {
-          "kind": "primitive",
-          "name": "string"
-        },
-        "max": null
-      }
     }
   ],
   "params": [],
@@ -1141,6 +1376,10 @@
     {
       "name": "draft",
       "define": "DEFINE BUCKET draft BACKEND 'memory' PERMISSIONS FULL"
+    },
+    {
+      "name": "images",
+      "define": "DEFINE BUCKET images BACKEND 'file:///C:/Users/User/gits/ee_map/data/bucket?lowercase_paths=true' PERMISSIONS WHERE $auth.id != NONE"
     }
   ],
   "sequences": [],

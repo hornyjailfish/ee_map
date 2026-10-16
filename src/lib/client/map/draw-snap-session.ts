@@ -79,9 +79,9 @@ export class DrawSnapSession {
 		this.snap = new MapSnapAssist({
 			map: this.map,
 			getSnapSources: () => this.collectSources(),
-			getAnchor: () => {
+			getAnchors: () => {
 				this.syncAnchorFromSketch();
-				return this.anchor;
+				return this.anchor ? [this.anchor] : [];
 			}
 		});
 

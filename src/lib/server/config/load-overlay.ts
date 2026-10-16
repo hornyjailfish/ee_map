@@ -5,10 +5,10 @@
 
 import { RecordId, type Surreal } from 'surrealdb';
 import type { AppConfigOverlay } from '$lib/config/types';
-import { liftOverlayV1toV2 } from '$lib/config/overlay-io';
+import { liftOverlayToV3 } from '$lib/config/overlay-io';
 
 const OVERLAY_TABLE = 'app_config';
-const OVERLAY_ID = 'v2';
+const OVERLAY_ID = 'main';
 
 /**
  * Select `app_config:main` and normalize to AppConfigOverlay | null.
@@ -63,6 +63,6 @@ export function normalizeOverlay(raw: unknown): AppConfigOverlay | null {
 
 	if (!hasOverlayShape) return null;
 
-	// v1 rows are migrated to v2 in place (nested graph/map/edges lifted).
-	return liftOverlayV1toV2(row);
+	// Older rows (v1/v2, incl. legacy `embeddings`) are migrated to v3 in place.
+	return liftOverlayToV3(row);
 }

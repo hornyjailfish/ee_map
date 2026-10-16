@@ -26,7 +26,7 @@ describe('merge', () => {
 		const result = merge(emptyAuto);
 
 		expect(result).toEqual({
-			version: 2,
+			version: 3,
 			tables: [],
 			relations: [],
 			map: defaultMap,

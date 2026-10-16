@@ -11,6 +11,7 @@ import { registerEditor } from './registry';
 import ComboInline from '$lib/components/table/editors/ComboInline.svelte';
 import ComboForm from '$lib/components/table/editors/ComboForm.svelte';
 import TextForm from '$lib/components/table/editors/TextForm.svelte';
+import ImageInline from '$lib/components/table/editors/ImageInline.svelte';
 
 let registered = false;
 
@@ -26,4 +27,8 @@ export function ensureEditorsRegistered(): void {
 	// SVAR keeps built-in `text` / `datepicker` inline; form uses Input.
 	registerEditor('text', { form: TextForm });
 	registerEditor('datepicker', { form: TextForm });
+
+	// Image fields (`image_url`) replace in place via a modal → Surreal file API.
+	// No form variant: add-row falls back to `text` (a new record has no file yet).
+	registerEditor('image', { inline: ImageInline });
 }

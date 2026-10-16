@@ -28,6 +28,7 @@ import Style from 'ol/style/Style';
 import {
 	applyDrawConstraints,
 	collectVertices,
+	roundSnapCoord,
 	type AlignmentGuide,
 	type XY
 } from './draw-snap';
@@ -52,8 +53,8 @@ export type MapSnapAssistOptions = {
 	 * (e.g. Edit only while a vertex is mid-drag).
 	 */
 	isEnabled?: () => boolean;
-	/** Last fixed vertex for Shift-ortho (map units). */
-	getAnchor?: () => XY | null;
+	/** Last fixed vertex (or neighbours) for Shift-ortho (map units). */
+	getAnchors?: () => readonly XY[];
 	/**
 	 * Vertices ignored by alignment (e.g. drag-start corner so it cannot
 	 * snap back to itself).
@@ -88,7 +89,7 @@ export class MapSnapAssist {
 	private readonly map: Map;
 	private readonly getSnapSources: () => Iterable<VectorSource>;
 	private readonly isEnabled: () => boolean;
-	private readonly getAnchor: () => XY | null;
+	private readonly getAnchors: () => readonly XY[];
 	private readonly getExcludeVertices: () => readonly XY[];
 	private readonly getExcludeFeatures: () => Iterable<Feature>;
 	private readonly guideSource = new VectorSource({ wrapX: false });
@@ -112,7 +113,7 @@ export class MapSnapAssist {
 		this.map = options.map;
 		this.getSnapSources = options.getSnapSources;
 		this.isEnabled = options.isEnabled ?? (() => true);
-		this.getAnchor = options.getAnchor ?? (() => null);
+		this.getAnchors = options.getAnchors ?? (() => []);
 		this.getExcludeVertices = options.getExcludeVertices ?? (() => []);
 		this.getExcludeFeatures = options.getExcludeFeatures ?? (() => []);
 
@@ -120,6 +121,8 @@ export class MapSnapAssist {
 			source: this.guideSource,
 			zIndex: 10_050,
 			style: GUIDE_STYLE,
+			updateWhileAnimating: true,
+			updateWhileInteracting: true,
 			properties: { role: 'snap-guides' }
 		});
 		this.map.addLayer(this.guideLayer);
@@ -225,7 +228,7 @@ export class MapSnapAssist {
 		const resolution = evt.map.getView().getResolution() ?? 1;
 		const toleranceMap = MAP_SNAP_PIXEL_TOLERANCE * resolution;
 		const cursor: XY = [evt.coordinate[0]!, evt.coordinate[1]!];
-		const anchor = this.getAnchor();
+		const anchors = this.getAnchors();
 
 		// Drop the live dragged vertex (≈ under cursor) so alignment cannot lock to self.
 		const selfR2 = (resolution * 2) ** 2;
@@ -238,18 +241,26 @@ export class MapSnapAssist {
 		const result = applyDrawConstraints(cursor, {
 			vertices,
 			toleranceMap,
-			anchor,
-			ortho: this.shiftDown && anchor != null
+			anchors,
+			ortho: this.shiftDown && anchors.length > 0
 		});
 
-		const moved = result.coordinate[0] !== cursor[0] || result.coordinate[1] !== cursor[1];
+		// Shared CAD snap is the last common place that writes the pointer coordinate
+		// for both draw and vertex-edit, so round here to keep the on-screen preview
+		// and the persisted geometry identical.
+		const coordinate: XY = [
+			roundSnapCoord(result.coordinate[0]),
+			roundSnapCoord(result.coordinate[1])
+		];
+
+		const moved = coordinate[0] !== cursor[0] || coordinate[1] !== cursor[1];
 		if (moved) {
-			evt.coordinate = result.coordinate.slice() as Coordinate;
+			evt.coordinate = coordinate.slice() as Coordinate;
 			evt.pixel = evt.map.getPixelFromCoordinate(evt.coordinate);
 		}
 
 		if (result.guides.length > 0) {
-			this.renderGuides(result.guides, result.coordinate);
+			this.renderGuides(result.guides, coordinate);
 		} else {
 			this.clearGuides();
 		}

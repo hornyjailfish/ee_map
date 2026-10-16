@@ -10,8 +10,8 @@ import {
 } from './overlay-io';
 
 describe('overlay-io', () => {
-	it('emptyOverlay starts at version 2', () => {
-		expect(emptyOverlay()).toEqual({ version: 2 });
+	it('emptyOverlay starts at version 3', () => {
+		expect(emptyOverlay()).toEqual({ version: 3 });
 	});
 
 	it('soft-parses known buckets and preserves unknown nested keys', () => {
@@ -31,7 +31,7 @@ describe('overlay-io', () => {
 
 		expect(result.ok).toBe(true);
 		if (!result.ok) return;
-		expect(result.overlay.version).toBe(2);
+		expect(result.overlay.version).toBe(3);
 		expect(result.overlay.excludeTables).toEqual(['embeddings']);
 		expect(result.overlay.entities?.boards).toMatchObject({
 			label: 'Boards',
@@ -46,7 +46,7 @@ describe('overlay-io', () => {
 	});
 
 	it('rejects unsupported version and non-objects', () => {
-		expect(softParseOverlay({ version: 3 }).ok).toBe(false);
+		expect(softParseOverlay({ version: 99 }).ok).toBe(false);
 		expect(softParseOverlay(42).ok).toBe(false);
 		expect(parseOverlayJson('{').ok).toBe(false);
 	});
@@ -67,5 +67,62 @@ describe('overlay-io', () => {
 			parts: [{ path: 'room.name' }, { path: 'name' }],
 			sep: ' · '
 		});
+	});
+
+	it('migrates a legacy embeddings overlay to the v3 marker-split model', () => {
+		const result = softParseOverlay({
+			version: 1,
+			excludeTables: ['__entity', 'embeddings'],
+			entities: {
+				embeddings: {
+					label: 'Markers',
+					display: { field: 'description' },
+					map: { enabled: true, levelField: 'level', geometryField: 'marker', zIndex: 60 }
+				}
+			},
+			search: { fieldsByTable: { embeddings: ['description'] } }
+		});
+
+		expect(result.ok).toBe(true);
+		if (!result.ok) return;
+		const overlay = result.overlay;
+		expect(overlay.version).toBe(3);
+		expect(overlay.excludeTables).toEqual(['__entity', 'embedding_queue']);
+		expect(overlay.entities?.embeddings).toBeUndefined();
+		expect(overlay.entities?.markers).toMatchObject({
+			label: 'Markers',
+			display: { field: 'level.name' }
+		});
+		expect(overlay.entities?.marker_views).toMatchObject({
+			label: 'Marker views',
+			display: { field: 'generated_description' }
+		});
+		expect(overlay.map?.layers).toMatchObject({
+			markers: { geometryField: 'geometry', levelField: 'level', zIndex: 60 }
+		});
+		expect(overlay.map?.layers?.embeddings).toBeUndefined();
+		expect(overlay.search?.fieldsByTable).toEqual({
+			marker_views: ['generated_description', 'user_description']
+		});
+	});
+
+	it('keeps an existing markers entry and is idempotent', () => {
+		const first = softParseOverlay({
+			version: 1,
+			entities: { embeddings: { label: 'Old' } }
+		});
+		if (!first.ok) return;
+		const migrated = {
+			...first.overlay,
+			entities: {
+				...(first.overlay.entities ?? {}),
+				markers: { label: 'Custom markers' }
+			}
+		};
+		const second = softParseOverlay(migrated);
+		expect(second.ok).toBe(true);
+		if (!second.ok) return;
+		expect(second.overlay.entities?.markers).toEqual({ label: 'Custom markers' });
+		expect(second.overlay.entities?.embeddings).toBeUndefined();
 	});
 });

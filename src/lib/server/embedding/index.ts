@@ -1,18 +1,18 @@
-export {
-	createEmbeddingClient,
-	resolveEmbeddingConfig,
-	EmbeddingServiceError,
-	type EmbeddingClient,
-	type EmbeddingConfig
-} from './client';
-
 export { resolveMarkerContext, type MarkerContext, type MarkerPoint } from './marker-context';
 
 export {
-	createEmbeddingMarker,
-	reembedMarker,
-	reembedMarkerAfterEdit,
-	type CreateEmbeddingMarkerInput,
-	type CreateEmbeddingMarkerResult,
-	type MarkerEmbeddingStatus
+	createMarker,
+	createMarkerView,
+	type CreateMarkerInput,
+	type CreateMarkerResult,
+	type CreateMarkerViewInput
 } from './marker-mutate';
+
+export {
+	loadMarkerEmbeddingStatuses,
+	aggregateMarkerStatus,
+	classifyView,
+	type MarkerEmbeddingStatus,
+	type MarkerViewState,
+	type ViewEmbeddingState
+} from './marker-status';

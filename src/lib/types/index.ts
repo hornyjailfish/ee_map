@@ -35,6 +35,10 @@ export interface Connects {
 	out: RecordId<'breakers'> | RecordId<'rents'>;
 }
 
+export interface Debug {
+	id: RecordId<'debug'>;
+}
+
 export interface ElectricRooms {
 	id: RecordId<'electric_rooms'>;
 	geometry?: GeometryPolygon;
@@ -42,18 +46,13 @@ export interface ElectricRooms {
 	name: string;
 }
 
-export interface Embeddings {
-	id: RecordId<'embeddings'>;
-	description?: string;
-	embedding_model?: string;
-	embedding_status?: string;
-	image?: string;
-	image_embedding?: number[];
-	level: RecordId<'levels'>;
-	marker: GeometryPoint;
-	shop?: RecordId<'shops'>;
-	text_embedding?: number[];
-	zone?: RecordId<'zones'>;
+export interface EmbeddingQueue {
+	id: RecordId<'embedding_queue'>;
+	data?: RecordId<'marker_views'>;
+	error_message?: string;
+	status: 'pending' | 'processing' | 'failed' | 'done';
+	updated_at: unknown;
+	version_snapshot: number;
 }
 
 export interface Levels {
@@ -61,6 +60,26 @@ export interface Levels {
 	geometry?: GeometryMultiLine | GeometryPolygon;
 	name: string;
 	ord: number;
+}
+
+export interface MarkerViews {
+	id: RecordId<'marker_views'>;
+	embedding?: number[];
+	generated_description: string;
+	image_embedding: number[];
+	image_url?: unknown;
+	marker: RecordId<'markers'>;
+	text_embedding: number[];
+	user_description?: string;
+	version: number;
+}
+
+export interface Markers {
+	id: RecordId<'markers'>;
+	closest_shop?: RecordId<'shops'>;
+	geometry: GeometryPoint;
+	level: RecordId<'levels'>;
+	zone: RecordId<'zones'>;
 }
 
 export interface Rents {

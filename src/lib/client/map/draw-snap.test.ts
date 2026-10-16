@@ -3,6 +3,8 @@ import {
 	applyDrawConstraints,
 	collectVertices,
 	constrainOrtho,
+	constrainOrthoToAnchors,
+	roundSnapCoord,
 	snapAlignment
 } from './draw-snap';
 
@@ -69,11 +71,10 @@ describe('applyDrawConstraints', () => {
 	];
 
 	it('applies ortho then alignment along the locked axis', () => {
-		// Shift from [0,0] toward [15, 2] → ortho to [15, 0]; then Y already on guide
 		const r = applyDrawConstraints([15, 2], {
 			vertices: verts,
 			toleranceMap: 0.5,
-			anchor: [0, 0],
+			anchors: [[0, 0]],
 			ortho: true
 		});
 		expect(r.coordinate).toEqual([15, 0]);
@@ -87,6 +88,38 @@ describe('applyDrawConstraints', () => {
 			ortho: false
 		});
 		expect(r.coordinate).toEqual([20, 5]);
+	});
+});
+
+describe('roundSnapCoord', () => {
+	it('rounds to millimetres', () => {
+		expect(roundSnapCoord(12.3456789)).toBe(12.346);
+		expect(roundSnapCoord(-3.99999)).toBe(-4);
+		expect(roundSnapCoord(1.2344)).toBe(1.234);
+	});
+});
+
+describe('constrainOrthoToAnchors', () => {
+	const anchors: Array<[number, number]> = [
+		[0, 0],
+		[100, 0]
+	];
+
+	it('behaves like constrainOrtho with a single anchor', () => {
+		expect(constrainOrthoToAnchors([[0, 0]], [40, 25])).toEqual([40, 0]);
+	});
+
+	it('returns the point unchanged with no anchors', () => {
+		expect(constrainOrthoToAnchors([], [3, 4])).toEqual([3, 4]);
+	});
+
+	it('picks the closest 0°/90° projection across both neighbours', () => {
+		// Near the vertical through (0,0) → [0, 50] beats any (100,*) projection.
+		expect(constrainOrthoToAnchors(anchors, [2, 50])).toEqual([0, 50]);
+		// Vertical through (100,0) is clearly closest.
+		expect(constrainOrthoToAnchors(anchors, [98, 50])).toEqual([100, 50]);
+		// Horizontal y=0 line is shared by both anchors.
+		expect(constrainOrthoToAnchors(anchors, [50, 3])).toEqual([50, 0]);
 	});
 });
 

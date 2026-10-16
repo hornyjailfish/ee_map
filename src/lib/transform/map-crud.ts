@@ -130,11 +130,12 @@ function resolveLevelField(entity: ResolvedEntity, layerLevelField?: string): st
 export function withoutTables(meta: MapCrudMeta, exclude: ReadonlySet<string>): MapCrudMeta {
 	const drawTargets = meta.drawTargets.filter((s) => !exclude.has(s.table));
 	const createTargets = meta.createTargets.filter((s) => !exclude.has(s.table));
+	const pointTargets = meta.pointTargets.filter((s) => !exclude.has(s.table));
 	const byTable: Record<string, MapEntityCrudSpec> = {};
 	for (const [table, spec] of Object.entries(meta.byTable)) {
 		if (!exclude.has(table)) byTable[table] = spec;
 	}
-	return { createTargets, drawTargets, byTable };
+	return { createTargets, drawTargets, pointTargets, byTable };
 }
 
 /**

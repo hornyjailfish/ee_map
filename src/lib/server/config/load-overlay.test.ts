@@ -32,7 +32,7 @@ describe('normalizeOverlay', () => {
 		});
 
 		expect(overlay).toEqual({
-			version: 2,
+			version: 3,
 			excludeTables: ['embeddings', 'app_config'],
 			entities: {
 				breakers: {},
@@ -55,7 +55,7 @@ describe('normalizeOverlay', () => {
 
 	it('unwraps single-element SELECT arrays', () => {
 		const overlay = normalizeOverlay([{ version: 1, excludeTables: ['x'] }]);
-		expect(overlay).toEqual({ version: 2, excludeTables: ['x'] });
+		expect(overlay).toEqual({ version: 3, excludeTables: ['x'] });
 	});
 
 	it('infers overlay when version missing but map present', () => {
@@ -63,7 +63,7 @@ describe('normalizeOverlay', () => {
 			map: { units: 'm', plane: 'xy-meters' }
 		});
 		expect(overlay).toEqual({
-			version: 2,
+			version: 3,
 			map: { units: 'm', plane: 'xy-meters' }
 		});
 	});

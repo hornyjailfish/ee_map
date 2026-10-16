@@ -20,6 +20,7 @@
 	import Projection from 'ol/proj/Projection';
 	import { getCenter } from 'ol/extent';
 	import { all as loadAll } from 'ol/loadingstrategy';
+	import { defaults as defaultInteractions } from 'ol/interaction/defaults';
 	import type { Type as GeometryType } from 'ol/geom/Geometry';
 	import { appUi } from '$lib/client/state/app-ui.svelte';
 	import {
@@ -62,6 +63,11 @@
 		onDrawEnd?: (geometry: WritableGeoJSON) => void;
 		/** Fired when a vertex or edge edit finishes on the focused feature. */
 		onModifyEnd?: (commit: ModifyCommit) => void;
+		/**
+		 * Called with the OL map once mounted (client-only), and `null` on teardown.
+		 * Lets the parent query map state (e.g. closest feature on a layer).
+		 */
+		onMapReady?: (map: Map | null) => void;
 		class?: string;
 	};
 
@@ -74,10 +80,14 @@
 		modifyLocked = false,
 		onDrawEnd,
 		onModifyEnd,
+		onMapReady,
 		class: className = ''
 	}: Props = $props();
 
 	const FALLBACK_EXTENT: [number, number, number, number] = [-1000, -1000, 1000, 1000];
+
+	/** Hard zoom cap (matches the fit maxZoom) so clicks can't spin the view out of control. */
+	const MAX_ZOOM = 6;
 
 	function resolveExtent(v: MapViewModel): [number, number, number, number] {
 		if (v.extent && v.extent.length === 4) {
@@ -104,6 +114,7 @@
 		f.set('levelId', mf.levelId);
 		if (mf.label !== undefined) f.set('label', mf.label);
 		if (mf.layerGroup !== undefined) f.set('layerGroup', mf.layerGroup);
+		if (mf.styleVariant !== undefined) f.set('styleVariant', mf.styleVariant);
 		return f;
 	}
 
@@ -131,18 +142,21 @@
 			target: element,
 			layers: [],
 			controls: [],
+			// Shift is reserved for ortho snapping, so drop the default Shift+drag zoom box.
+			interactions: defaultInteractions({ onFocusOnly: true, shiftDragZoom: false }),
 			view: new View({
 				projection,
 				extent: [-100, -100, 500, 500],
 				center: getCenter(initialExtent),
 				zoom: 2,
+				maxZoom: MAX_ZOOM,
 				multiWorld: false
 			})
 		});
 
 		map.getView().fit(initialExtent, {
 			padding: [24, 24, 24, 24],
-			maxZoom: 6,
+			maxZoom: MAX_ZOOM,
 			duration: 0
 		});
 
@@ -150,6 +164,10 @@
 			map.updateSize();
 		});
 		resizeObserver.observe(element);
+
+		// Surface the live map to the parent (client-only).
+		const readyCb = untrack(() => onMapReady);
+		readyCb?.(map);
 
 		/** Draft sketch source — Draw writes here; confirmed draft stays until parent clears. */
 		const draftSource = new VectorSource({ wrapX: false });
@@ -303,7 +321,8 @@
 						const styleKey =
 							(olFeature.get('styleKey') as string | undefined) ?? layerView.styleKey;
 						const focused = id != null && String(id) === focusBox.id;
-						const base = styleFor(styleKey, { focused });
+						const variant = olFeature.get('styleVariant') as string | undefined;
+						const base = styleFor(styleKey, { focused, variant });
 						// Show corner + mid-edge handles on the focused feature while Edit is active
 						if (focused && toolBox.mode === 'modify') {
 							return withVertexHandles(base, olFeature);
@@ -338,7 +357,7 @@
 				projection.setExtent(nextExtent);
 				map.getView().fit(nextExtent, {
 					padding: [24, 24, 24, 24],
-					maxZoom: 6,
+					maxZoom: MAX_ZOOM,
 					duration: 0
 				});
 			}
@@ -552,6 +571,7 @@
 			disposeDrawSession();
 			disposeModifySession();
 			disposeExtrudeSession();
+			readyCb?.(null);
 			map.setTarget(undefined);
 			map.dispose();
 		};

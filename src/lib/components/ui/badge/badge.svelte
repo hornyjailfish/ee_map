@@ -7,6 +7,8 @@
 			variant: {
 				default: 'bg-primary text-primary-foreground [a]:hover:bg-primary/80',
 				secondary: 'bg-secondary text-secondary-foreground [a]:hover:bg-secondary/80',
+				positive:
+					'bg-emerald-300/50 text-emerald-500/90 focus-visible:ring-emerald-500/90 dark:bg-emerald-300/50 dark:focus-visible:ring-emerald-500/90 [a]:hover:bg-emerald-300/50',
 				destructive:
 					'bg-destructive/10 text-destructive focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:focus-visible:ring-destructive/40 [a]:hover:bg-destructive/20',
 				outline:

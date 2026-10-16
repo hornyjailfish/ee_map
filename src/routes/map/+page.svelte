@@ -13,11 +13,13 @@
 	import ViewLoadingOverlay from '$lib/components/view/ViewLoadingOverlay.svelte';
 	import { ApiError, postFormAction } from '$lib/client/http';
 	import {
+		findClosestFeatureByTable,
 		geoJsonToNormalized,
 		type MapToolMode,
 		type ModifyCommit,
 		type WritableGeoJSON
 	} from '$lib/client/map';
+	import type OlMap from 'ol/Map';
 	import type { EditorOption } from '$lib/client/editors';
 	import { appUi } from '$lib/client/state/app-ui.svelte';
 	import type { AppRole } from '$lib/catalog-types';
@@ -25,7 +27,6 @@
 	import type { MapFeature, NormalizedGeometry } from '$lib/transform/to-map';
 	import type { MarkerContextData } from '$lib/transform/marker';
 	import CircleAlertIcon from '@lucide/svelte/icons/circle-alert';
-	import InfoIcon from '@lucide/svelte/icons/info';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
@@ -101,8 +102,15 @@
 	let markerResolving = $state(false);
 	let markerSubmitting = $state(false);
 	let markerError = $state<string | null>(null);
-	let markerNotice = $state<string | null>(null);
 	let markerContext = $state<MarkerContextData | null>(null);
+
+	// Live OL map (client-only). Plain ref — proxying the OL Map is not wanted.
+	let mapInstance: OlMap | null = null;
+
+	// Add a `marker_views` row to the currently selected marker.
+	let markerViewOpen = $state(false);
+	let markerViewSubmitting = $state(false);
+	let markerViewError = $state<string | null>(null);
 
 	/** Pending geometry save after a vertex/edge drag (retry / cancel). */
 	type PendingModify = {
@@ -231,7 +239,8 @@
 		if (next) {
 			params.set('level', next);
 		} else {
-			params.delete('level');
+			// "All" is an explicit choice; absent `?level=` defaults to the first floor.
+			params.set('level', 'all');
 		}
 		const qs = params.toString();
 		void goto(qs ? `${href}?${qs}` : href, { keepFocus: true, noScroll: true });
@@ -298,7 +307,7 @@
 	}
 
 	function loadingLabel(): string {
-		if (!pendingLevel) return 'Loading all levels…';
+		if (!pendingLevel || pendingLevel === 'all') return 'Loading all levels…';
 		const match = levels.find((l) => l.id === pendingLevel);
 		return match ? `Loading ${levelLabel(match)}…` : 'Loading level…';
 	}
@@ -356,10 +365,20 @@
 		markerResolving = true;
 		markerError = null;
 		markerContext = null;
+
+		// Nearest rent (shop) by straight-line distance on the metric XY plane.
+		// Sent as a hint: the server still uses exact point-in-polygon when the
+		// point lands inside a rent, otherwise falls back to the closest one.
+		const closestRent =
+			mapInstance && geometry.type === 'Point'
+				? findClosestFeatureByTable(mapInstance, 'rents', geometry.coordinates, levelId)
+				: null;
+
 		try {
 			const result = await postFormAction<{ context: MarkerContextData }>('resolveMarkerContext', {
 				point: JSON.stringify(geometry),
-				level: levelId ?? ''
+				level: levelId ?? '',
+				closestRent: closestRent?.id ?? ''
 			});
 			markerContext = result.context;
 		} catch (err) {
@@ -375,12 +394,8 @@
 		try {
 			markerSubmitting = true;
 			markerError = null;
-			markerNotice = null;
 
-			const result = await postFormAction<{
-				id?: string;
-				embedding: 'pending' | 'done' | 'failed';
-			}>('createMarker', {
+			const result = await postFormAction<{ id?: string; viewId?: string }>('createMarker', {
 				point: JSON.stringify(draftGeo),
 				level: levelId ?? '',
 				description,
@@ -394,9 +409,6 @@
 			markerContext = null;
 			await invalidateAll();
 			if (result.id) appUi.focusRecord(result.id);
-			if (result.embedding === 'failed') {
-				markerNotice = 'Marker saved, but embedding failed — retry from the marker later.';
-			}
 			// Stay in marker mode to place more markers.
 		} catch (err) {
 			markerError = formatWriteError(err, 'Failed to save marker');
@@ -553,6 +565,67 @@
 		}
 	}
 
+	function openAddView() {
+		if (!roleCanEdit || !appUi.focusedId) return;
+		markerViewError = null;
+		markerViewOpen = true;
+	}
+
+	async function submitMarkerView(description: string, image: string | null) {
+		if (!roleCanEdit || !appUi.focusedId || markerViewSubmitting) return;
+		try {
+			markerViewSubmitting = true;
+			markerViewError = null;
+			await postFormAction('createMarkerView', {
+				marker: appUi.focusedId,
+				description,
+				image
+			});
+			markerViewOpen = false;
+			await invalidateAll();
+		} catch (err) {
+			markerViewError = formatWriteError(err, 'Failed to add marker view');
+		} finally {
+			markerViewSubmitting = false;
+		}
+	}
+
+	async function deleteMarker() {
+		if (!roleCanEdit || !appUi.focusedId || propsSubmitting) return;
+		const id = appUi.focusedId;
+		if (!confirm(`Delete marker ${id}?`)) return;
+		try {
+			propsSubmitting = true;
+			propsError = null;
+			writeError = null;
+			await postFormAction('deleteMarker', { id });
+			appUi.focusRecord(null);
+			await invalidateAll();
+		} catch (err) {
+			propsError = formatWriteError(err, 'Failed to delete marker');
+		} finally {
+			propsSubmitting = false;
+		}
+	}
+
+	async function saveMarkerViewUpdate(payload: { id: string; values: Record<string, string> }) {
+		if (!roleCanEdit || propsSubmitting) return;
+		try {
+			propsSubmitting = true;
+			propsError = null;
+			writeError = null;
+			await postFormAction('updateMarkerView', {
+				id: payload.id,
+				...payload.values
+			});
+			await invalidateAll();
+		} catch (err) {
+			propsError = formatWriteError(err, 'Failed to update marker view');
+		} finally {
+			propsSubmitting = false;
+		}
+	}
+
 	// Dialog cancel / dismiss discards the pending sketch
 	$effect(() => {
 		if (!createOpen && !markerOpen && draftGeo && !createSubmitting && !markerSubmitting) {
@@ -687,16 +760,6 @@
 		</div>
 	{/if}
 
-	{#if markerNotice}
-		<div class="shrink-0 px-4 pt-2">
-			<Alert.Root>
-				<InfoIcon />
-				<Alert.Title>Marker embedding</Alert.Title>
-				<Alert.Description>{markerNotice}</Alert.Description>
-			</Alert.Root>
-		</div>
-	{/if}
-
 	<div class="relative min-h-0 w-full flex-1 overflow-hidden">
 		{#if levelLoading}
 			{#if browser && view}
@@ -744,7 +807,34 @@
 				{modifyLocked}
 				{onDrawEnd}
 				{onModifyEnd}
+				onMapReady={(m) => (mapInstance = m)}
 			/>
+			<!-- Marker embedding-status legend (recolour via marker-status / styles) -->
+			<aside
+				class="pointer-events-none absolute bottom-2 left-2 z-20 rounded-md border border-border bg-background/90 px-2.5 py-2 shadow-sm"
+				aria-label="Marker embedding status legend"
+			>
+				<p class="mb-1 text-[10px] font-semibold tracking-wide text-muted-foreground uppercase">
+					Marker status
+				</p>
+				<ul class="flex flex-col gap-1 text-[11px] text-muted-foreground">
+					<li class="flex items-center gap-1.5">
+						<span class="size-2.5 rounded-full" style="background:#22c55e"></span> Done
+					</li>
+					<li class="flex items-center gap-1.5">
+						<span class="size-2.5 rounded-full" style="background:#3b82f6"></span> Processing / pending
+					</li>
+					<li class="flex items-center gap-1.5">
+						<span class="size-2.5 rounded-full" style="background:#f59e0b"></span> Version mismatch
+					</li>
+					<li class="flex items-center gap-1.5">
+						<span class="size-2.5 rounded-full" style="background:#ef4444"></span> Failed
+					</li>
+					<li class="flex items-center gap-1.5">
+						<span class="size-2.5 rounded-full" style="background:#94a3b8"></span> No views
+					</li>
+				</ul>
+			</aside>
 			{#if appUi.focusedId && !createOpen}
 				<svelte:boundary>
 					{#snippet failed(error, reset)}
@@ -796,6 +886,9 @@
 								appUi.focusRecord(null);
 							}}
 							onSave={saveFeatureProperties}
+							onAddView={openAddView}
+							onDelete={deleteMarker}
+							onSaveView={saveMarkerViewUpdate}
 						/>
 					{/key}
 				</svelte:boundary>
@@ -832,5 +925,16 @@
 		submitting={markerSubmitting}
 		error={markerError}
 		onCreate={submitMarker}
+	/>
+{/if}
+
+{#if roleCanEdit}
+	<MarkerModal
+		bind:open={markerViewOpen}
+		mode="view"
+		markerId={appUi.focusedId}
+		submitting={markerViewSubmitting}
+		error={markerViewError}
+		onCreate={submitMarkerView}
 	/>
 {/if}

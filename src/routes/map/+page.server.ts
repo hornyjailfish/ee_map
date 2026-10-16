@@ -8,6 +8,7 @@ import { resolveAppConfig } from '$lib/server/config';
 import {
 	assertCanEdit,
 	createRecord,
+	deleteRecord,
 	geometryFieldName,
 	isValidTableName,
 	loadRecordOptions,
@@ -16,14 +17,23 @@ import {
 	patchRecord,
 	queryEntities,
 	queryLevels,
+	tableOfId,
+	validateRecordId,
 	type RecordOption
 } from '$lib/server/data';
 import { buildMapCrudMeta, withoutTables, type MapCrudMeta } from '$lib/transform/map-crud';
-import { toMap, type MapFeature, type MapViewModel } from '$lib/transform/to-map';
+import {
+	toMap,
+	mapLevels,
+	applyStyleVariants,
+	type MapFeature,
+	type MapViewModel
+} from '$lib/transform/to-map';
 import { entityByName } from '$lib/transform/to-table';
 import {
-	createEmbeddingMarker,
-	reembedMarkerAfterEdit,
+	createMarker,
+	createMarkerView,
+	loadMarkerEmbeddingStatuses,
 	resolveMarkerContext,
 	type MarkerContext
 } from '$lib/server/embedding';
@@ -66,7 +76,9 @@ const updateFeatureSchema = z
 /** Point GeoJSON string (markers). */
 const markerPointSchema = z.object({
 	point: z.string().default(''),
-	level: z.string().default('')
+	level: z.string().default(''),
+	/** Optional nearest-rent hint resolved client-side (metric XY plane). */
+	closestRent: z.string().default('')
 });
 
 const createMarkerSchema = z.object({
@@ -77,6 +89,16 @@ const createMarkerSchema = z.object({
 	shop: z.string().optional(),
 	image: z.string().optional()
 });
+
+const createMarkerViewSchema = z.object({
+	marker: z.string().default(''),
+	description: z.string().default(''),
+	image: z.string().optional()
+});
+
+const deleteMarkerSchema = z.object({ id: z.string().default('') });
+
+const updateMarkerViewSchema = z.object({ id: z.string().default('') }).catchall(z.string());
 
 /** Parse a Point GeoJSON string → `{ x, y }`, or null when invalid. */
 function parsePointGeoJson(raw: string): { x: number; y: number } | null {
@@ -127,6 +149,7 @@ function slimFeature(feature: MapFeature): MapFeature {
 
 	if (feature.label !== undefined) slim.label = feature.label;
 	if (feature.layerGroup !== undefined) slim.layerGroup = feature.layerGroup;
+	if (feature.styleVariant !== undefined) slim.styleVariant = feature.styleVariant;
 
 	return slim;
 }
@@ -150,11 +173,23 @@ function layerTables(config: ResolvedConfig): string[] {
 	return [...names];
 }
 
-/** Parse `?level=`; empty / missing → null (all levels). */
-function parseLevelParam(raw: string | null): string | null {
+/** Sentinel `?level=` value for "all levels" (vs. an absent param = default floor). */
+const LEVEL_ALL = 'all';
+
+/**
+ * Parse `?level=`. Returns:
+ * - `{ mode: 'level', id }` for an explicit floor record id,
+ * - `{ mode: 'all' }` for `?level=all`,
+ * - `null` when the param is absent/empty (caller defaults to the first floor).
+ */
+function parseLevelParam(
+	raw: string | null
+): { mode: 'all' } | { mode: 'level'; id: string } | null {
 	if (raw == null) return null;
 	const trimmed = raw.trim();
-	return trimmed === '' ? null : trimmed;
+	if (trimmed === '') return null;
+	if (trimmed === LEVEL_ALL) return { mode: 'all' };
+	return { mode: 'level', id: trimmed };
 }
 
 async function resolveForMapWrite(
@@ -359,8 +394,6 @@ export const actions: Actions = {
 		try {
 			const entity = await resolveForMapWrite(locals, fetch, table, 'props');
 			await patchRecord(locals.session!, entity, id, values);
-			// Editing a marker's description (or image) invalidates its stored vector.
-			await reembedMarkerAfterEdit(locals.session!, table, id, Object.keys(values));
 			return { ok: true as const, id };
 		} catch (err) {
 			return failFromError(err);
@@ -417,7 +450,13 @@ export const actions: Actions = {
 			assertCanEdit(roles);
 
 			const level = parsed.data.level.trim() ? parsed.data.level.trim() : null;
-			const context: MarkerContext = await resolveMarkerContext(locals.session, point, level);
+			const closestRent = parsed.data.closestRent.trim() ? parsed.data.closestRent.trim() : null;
+			const context: MarkerContext = await resolveMarkerContext(
+				locals.session,
+				point,
+				level,
+				closestRent
+			);
 			return { ok: true as const, context };
 		} catch (err) {
 			return failFromError(err);
@@ -425,9 +464,9 @@ export const actions: Actions = {
 	},
 
 	/**
-	 * Create an embedding-search marker: point + description (+ optional image),
-	 * with structured level/zone/shop context. Embedding computed server-side;
-	 * on service failure the marker still saves with `embedding_status: failed`.
+	 * Create an indoor search marker: point + level/zone/rent context on `markers`,
+	 * editor description on the linked `marker_views` row. Embedding generation is
+	 * handled by the separate pipeline (via `embedding_queue`).
 	 */
 	createMarker: async ({ request, locals, fetch }) => {
 		const form = Object.fromEntries((await request.formData()).entries()) as Record<string, string>;
@@ -450,7 +489,7 @@ export const actions: Actions = {
 			const roles = await getUserRoles(locals.selection.namespace, locals.user, fetch);
 			assertCanEdit(roles);
 
-			const result = await createEmbeddingMarker(locals.session, {
+			const result = await createMarker(locals.session, {
 				description: parsed.data.description,
 				levelId: parsed.data.level.trim(),
 				zoneId: parsed.data.zone?.trim() || null,
@@ -458,7 +497,118 @@ export const actions: Actions = {
 				point,
 				image: parsed.data.image?.trim() || null
 			});
-			return { ok: true as const, id: result.id, embedding: result.status, error: result.error };
+			return { ok: true as const, id: result.id, viewId: result.viewId };
+		} catch (err) {
+			return failFromError(err);
+		}
+	},
+
+	/**
+	 * Add a `marker_views` row to an existing `markers` record. The `marker`
+	 * back-reference is set to the selected marker; the description is stored on
+	 * the view's `user_description` (image upload handled like `createMarker`).
+	 */
+	createMarkerView: async ({ request, locals, fetch }) => {
+		const form = Object.fromEntries((await request.formData()).entries()) as Record<string, string>;
+		const parsed = createMarkerViewSchema.safeParse(form);
+		if (!parsed.success) {
+			return fail(400, { code: 'invalid_form', message: 'Invalid form data' });
+		}
+		if (!parsed.data.marker.trim()) {
+			return fail(400, { code: 'invalid_form', message: 'marker is required' });
+		}
+
+		try {
+			if (!locals.session?.isConnected) {
+				throw new MutateError(503, 'db_unavailable', 'Database unavailable');
+			}
+			const roles = await getUserRoles(locals.selection.namespace, locals.user, fetch);
+			assertCanEdit(roles);
+
+			const result = await createMarkerView(locals.session, {
+				markerId: parsed.data.marker.trim(),
+				description: parsed.data.description,
+				image: parsed.data.image?.trim() || null
+			});
+			return { ok: true as const, id: result.viewId };
+		} catch (err) {
+			return failFromError(err);
+		}
+	},
+
+	/**
+	 * Delete a `markers` record from the properties panel. Its `marker_views`
+	 * rows are left untouched (dangling back-references remain).
+	 */
+	deleteMarker: async ({ request, locals, fetch }) => {
+		const form = Object.fromEntries((await request.formData()).entries()) as Record<string, string>;
+		const parsed = deleteMarkerSchema.safeParse(form);
+		if (!parsed.success) {
+			return fail(400, { code: 'invalid_form', message: 'Invalid form data' });
+		}
+		if (!parsed.data.id.trim()) {
+			return fail(400, { code: 'invalid_form', message: 'id is required' });
+		}
+
+		try {
+			if (!locals.session?.isConnected) {
+				throw new MutateError(503, 'db_unavailable', 'Database unavailable');
+			}
+			const config = await resolveAppConfig(locals.session);
+			const roles = await getUserRoles(locals.selection.namespace, locals.user, fetch);
+			assertCanEdit(roles);
+
+			const entity = entityByName(config, 'markers');
+			if (!entity) {
+				throw new MutateError(404, 'unknown_table', 'Unknown table: markers');
+			}
+
+			const recordId = validateRecordId(parsed.data.id.trim());
+			if (tableOfId(recordId) !== 'markers') {
+				throw new MutateError(400, 'invalid_id', 'id must reference a markers record');
+			}
+
+			await deleteRecord(locals.session, entity, recordId);
+			return { ok: true as const };
+		} catch (err) {
+			return failFromError(err);
+		}
+	},
+
+	/**
+	 * Patch fields on a `marker_views` row (in-place `user_description` edit).
+	 */
+	updateMarkerView: async ({ request, locals, fetch }) => {
+		const form = Object.fromEntries((await request.formData()).entries()) as Record<string, string>;
+		const parsed = updateMarkerViewSchema.safeParse(form);
+		if (!parsed.success) {
+			return fail(400, { code: 'invalid_form', message: 'Invalid form data' });
+		}
+		const { id, ...values } = parsed.data;
+		if (!id.trim()) {
+			return fail(400, { code: 'invalid_form', message: 'id is required' });
+		}
+
+		try {
+			if (!locals.session?.isConnected) {
+				throw new MutateError(503, 'db_unavailable', 'Database unavailable');
+			}
+			const config = await resolveAppConfig(locals.session);
+			const roles = await getUserRoles(locals.selection.namespace, locals.user, fetch);
+			assertCanEdit(roles);
+
+			const entity = entityByName(config, 'marker_views');
+			if (!entity) {
+				throw new MutateError(404, 'unknown_table', 'Unknown table: marker_views');
+			}
+
+			const recordId = validateRecordId(id.trim());
+			if (tableOfId(recordId) !== 'marker_views') {
+				throw new MutateError(400, 'invalid_id', 'id must reference a marker_views record');
+			}
+
+			await patchRecord(locals.session, entity, recordId, values);
+			return { ok: true as const, id: recordId };
 		} catch (err) {
 			return failFromError(err);
 		}
@@ -469,13 +619,16 @@ export const load: PageServerLoad = async ({ parent, locals, url }): Promise<Map
 	const layout = await parent();
 	const config = layout.config;
 	const configError = layout.configError ?? null;
-	const levelId = parseLevelParam(url.searchParams.get('level'));
+	const levelParam = parseLevelParam(url.searchParams.get('level'));
 	const roles = layout.userRoles ?? [];
 	const roleCanEdit = canEdit(roles);
 
+	// Level to surface on error paths, where no levels are loaded to default to.
+	const fallbackLevel = levelParam?.mode === 'level' ? levelParam.id : null;
+
 	if (!config) {
 		return emptyPage({
-			levelId,
+			levelId: fallbackLevel,
 			error:
 				configError ??
 				locals.dbError ??
@@ -487,7 +640,7 @@ export const load: PageServerLoad = async ({ parent, locals, url }): Promise<Map
 
 	if (!locals.session?.isConnected) {
 		return emptyPage({
-			levelId,
+			levelId: fallbackLevel,
 			error: locals.dbError ?? 'Database unavailable'
 		});
 	}
@@ -521,14 +674,37 @@ export const load: PageServerLoad = async ({ parent, locals, url }): Promise<Map
 			}
 		}
 
-		const view = slimView(
-			toMap({
-				config,
-				entities,
-				levels,
-				levelId
-			})
-		);
+		// Resolve the active floor: explicit `?level=<id>`, `?level=all`, or
+		// default to the first floor (lowest `ord`) when no param is present.
+		let levelId: string | null;
+		if (levelParam?.mode === 'level') {
+			levelId = levelParam.id;
+		} else if (levelParam?.mode === 'all') {
+			levelId = null;
+		} else {
+			// No `?level` param → default to the middle floor (by ord).
+			const ordered = mapLevels(levels ?? [], config.map.levelOrderField);
+			levelId = ordered.length > 0 ? ordered[Math.floor(ordered.length / 2)]!.id : null;
+		}
+
+		const model = toMap({
+			config,
+			entities,
+			levels,
+			levelId
+		});
+
+		// Recolour marker pins by embedding status (aggregated across each marker's
+		// views). Non-fatal: a status failure leaves pins on the default colour.
+		try {
+			const statusById = await loadMarkerEmbeddingStatuses(session);
+			applyStyleVariants(model, statusById);
+		} catch (err) {
+			const message = err instanceof Error ? err.message : 'Failed to load embedding status';
+			console.warn('[map] marker embedding status failed:', message);
+		}
+
+		const view = slimView(model);
 
 		let recordOptionsByTable: Record<string, Record<string, RecordOption[]>> = {};
 		if (crud && crud.drawTargets.some((t) => t.canCreate)) {
@@ -546,7 +722,7 @@ export const load: PageServerLoad = async ({ parent, locals, url }): Promise<Map
 		const message = err instanceof Error ? err.message : 'Failed to load map data';
 		console.warn('[map] load failed:', message);
 		return emptyPage({
-			levelId,
+			levelId: fallbackLevel,
 			crud,
 			error: message
 		});
