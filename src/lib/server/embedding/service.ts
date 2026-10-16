@@ -20,10 +20,9 @@ import { normalizeStatus, type EmbeddingTask } from '$lib/embedding-types';
 
 export const EMBEDDING_SERVICE_DEFAULT = 'http://localhost:8030';
 
-/** Configurable embedding service origin (no trailing slash). */
+/** Configurable embedding service origin from `EMBEDDING_SERVICE_URL`. */
 export function embeddingServiceUrl(): string {
-	const raw = env.EMBEDDING_SERVICE_URL || EMBEDDING_SERVICE_DEFAULT;
-	return raw.replace(/\/+$/, '');
+	return env.EMBEDDING_SERVICE_URL || EMBEDDING_SERVICE_DEFAULT;
 }
 
 /** Failure talking to the embedding service (carries an HTTP-ish status). */

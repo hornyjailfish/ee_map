@@ -35,10 +35,14 @@ function asRecord(value: unknown): Record<string, unknown> | null {
 
 function normalizeRole(value: unknown): AppRole | null {
 	if (typeof value !== 'string') return null;
-	const upper = value.trim().toUpperCase();
-	// Defensive: treat OWNED as OWNER (common typo / alias)
-	const role = upper === 'OWNED' ? 'OWNER' : upper;
+	const role = value.trim().toUpperCase();
 	return (APP_ROLES as readonly string[]).includes(role) ? (role as AppRole) : null;
+}
+
+function rolesFromUnknown(raw: unknown): AppRole[] {
+	if (!Array.isArray(raw)) return [];
+	const roles = raw.map(normalizeRole).filter((role): role is AppRole => role !== null);
+	return [...new Set(roles)];
 }
 
 function parseNamedList(raw: unknown): string[] {
@@ -57,6 +61,7 @@ function parseNamedList(raw: unknown): string[] {
 	return Object.keys(map);
 }
 
+/** Parse NS STRUCTURE users — array of `{ name, roles[] }` or name→`{ roles[] }` map. */
 function parseUsers(raw: unknown): CatalogUser[] {
 	const users: CatalogUser[] = [];
 
@@ -64,10 +69,7 @@ function parseUsers(raw: unknown): CatalogUser[] {
 		for (const entry of raw) {
 			const row = asRecord(entry) as StructuredUser | null;
 			if (!row || typeof row.name !== 'string' || !row.name) continue;
-			const roles = Array.isArray(row.roles)
-				? row.roles.map(normalizeRole).filter((role): role is AppRole => role !== null)
-				: [];
-			users.push({ name: row.name, roles: [...new Set(roles)] });
+			users.push({ name: row.name, roles: rolesFromUnknown(row.roles) });
 		}
 		return users;
 	}
@@ -76,19 +78,8 @@ function parseUsers(raw: unknown): CatalogUser[] {
 	if (!map) return users;
 
 	for (const [name, def] of Object.entries(map)) {
-		if (typeof def === 'string') {
-			const roles = [...def.matchAll(/\b(OWNER|EDITOR|VIEWER|OWNED)\b/gi)]
-				.map((match) => normalizeRole(match[1]))
-				.filter((role): role is AppRole => role !== null);
-			users.push({ name, roles: [...new Set(roles)] });
-			continue;
-		}
-
 		const row = asRecord(def) as StructuredUser | null;
-		const roles = Array.isArray(row?.roles)
-			? row.roles.map(normalizeRole).filter((role): role is AppRole => role !== null)
-			: [];
-		users.push({ name, roles: [...new Set(roles)] });
+		users.push({ name, roles: rolesFromUnknown(row?.roles) });
 	}
 
 	return users;
