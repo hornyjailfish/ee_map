@@ -8,6 +8,7 @@
 	 * feature Snap + Shift-ortho + vertex alignment guides.
 	 * C4.1b edit: ModifyVertexSession when `tool` is modify — move / add / remove corners.
 	 * C4.1c extrude: ModifyExtrudeSession when `tool` is extrude — polygon edge push/pull.
+	 * C4.1d split: SplitPolygonSession when `tool` is split — cut polygon by edge-to-edge chord.
 	 */
 	import type { Attachment } from 'svelte/attachments';
 	import { untrack } from 'svelte';
@@ -39,6 +40,7 @@
 		ModifyVertexSession
 	} from '$lib/client/map/modify-vertex-session';
 	import { ModifyExtrudeSession } from '$lib/client/map/modify-extrude-session';
+	import { SplitPolygonSession, type SplitCommit } from '$lib/client/map/split-polygon-session';
 	import { withVertexHandles } from '$lib/client/map/vertex-handles';
 	import { styleFor } from '$lib/client/registries/styles';
 	import type { MapFeature, MapViewModel, NormalizedGeometry } from '$lib/transform/to-map';
@@ -63,6 +65,8 @@
 		onDrawEnd?: (geometry: WritableGeoJSON) => void;
 		/** Fired when a vertex or edge edit finishes on the focused feature. */
 		onModifyEnd?: (commit: ModifyCommit) => void;
+		/** Fired when a split chord cuts the focused polygon into two parts. */
+		onSplitEnd?: (commit: SplitCommit) => void;
 		/**
 		 * Called with the OL map once mounted (client-only), and `null` on teardown.
 		 * Lets the parent query map state (e.g. closest feature on a layer).
@@ -80,6 +84,7 @@
 		modifyLocked = false,
 		onDrawEnd,
 		onModifyEnd,
+		onSplitEnd,
 		onMapReady,
 		class: className = ''
 	}: Props = $props();
@@ -191,7 +196,8 @@
 			// Edit/extrude own pointer clicks (add/remove vertex, edge drag).
 			// Empty hits and Alt+click (delete vertex) must NOT clear focus — that
 			// unbinds the edit session and feels like a deselect after remove.
-			const editMode = toolBox.mode === 'modify' || toolBox.mode === 'extrude';
+			const editMode =
+				toolBox.mode === 'modify' || toolBox.mode === 'extrude' || toolBox.mode === 'split';
 			const original = evt.originalEvent as MouseEvent | PointerEvent | undefined;
 			if (editMode && original?.altKey) return;
 
@@ -208,7 +214,11 @@
 						if (layer === draftLayer) return false;
 						const role = layer.get('role');
 						const group = layer.get('layerGroup');
-						return role !== 'snap-guides' && role !== 'extrude-highlight';
+						return (
+							role !== 'snap-guides' &&
+							role !== 'extrude-highlight' &&
+							role !== 'split-overlay'
+						);
 					}
 				}
 			);
@@ -217,7 +227,7 @@
 				appUi.focusRecord(id != null ? String(id) : null);
 			} else if (!editMode) {
 				// Navigate: click empty map clears selection.
-				// Edit/extrude: miss keeps the feature under edit selected.
+				// Edit/extrude/split: miss keeps the feature under edit selected.
 				appUi.focusRecord(null);
 			}
 		});
@@ -234,9 +244,11 @@
 		const drawCb: {
 			onDrawEnd?: (geometry: WritableGeoJSON) => void;
 			onModifyEnd?: (commit: ModifyCommit) => void;
+			onSplitEnd?: (commit: SplitCommit) => void;
 		} = {
 			onDrawEnd: untrack(() => onDrawEnd),
-			onModifyEnd: untrack(() => onModifyEnd)
+			onModifyEnd: untrack(() => onModifyEnd),
+			onSplitEnd: untrack(() => onSplitEnd)
 		};
 		/** Draw + feature Snap + CAD alignment/ortho session (null when navigate). */
 		const drawBox: { session: DrawSnapSession | null } = { session: null };
@@ -244,6 +256,8 @@
 		const modifyBox: { session: ModifyVertexSession | null } = { session: null };
 		/** Polygon edge-extrude session (null unless tool === extrude). */
 		const extrudeBox: { session: ModifyExtrudeSession | null } = { session: null };
+		/** Polygon split session (null unless tool === split). */
+		const splitBox: { session: SplitPolygonSession | null } = { session: null };
 
 		function disposeDrawSession() {
 			drawBox.session?.dispose();
@@ -260,10 +274,16 @@
 			extrudeBox.session = null;
 		}
 
+		function disposeSplitSession() {
+			splitBox.session?.dispose();
+			splitBox.session = null;
+		}
+
 		// Keep callback + lock pointers fresh
 		$effect(() => {
 			drawCb.onDrawEnd = onDrawEnd;
 			drawCb.onModifyEnd = onModifyEnd;
+			drawCb.onSplitEnd = onSplitEnd;
 		});
 
 		$effect(() => {
@@ -271,10 +291,12 @@
 			toolBox.modifyLocked = modifyLocked;
 			modifyBox.session?.setLocked(modifyLocked);
 			extrudeBox.session?.setLocked(modifyLocked);
+			splitBox.session?.setLocked(modifyLocked);
 			for (const layer of map.getLayers().getArray()) {
 				if (layer === draftLayer) continue;
 				if (layer.get('role') === 'snap-guides') continue;
 				if (layer.get('role') === 'extrude-highlight') continue;
+				if (layer.get('role') === 'split-overlay') continue;
 				layer.changed();
 			}
 		});
@@ -288,7 +310,12 @@
 				if (layer === draftLayer) continue;
 				// Draw/edit sessions own temporary overlays.
 				const role = layer.get('role');
-				if (role === 'snap-guides' || role === 'extrude-highlight') continue;
+				if (
+					role === 'snap-guides' ||
+					role === 'extrude-highlight' ||
+					role === 'split-overlay'
+				)
+					continue;
 				map.removeLayer(layer);
 			}
 
@@ -343,6 +370,7 @@
 			for (const layer of map.getLayers().getArray()) {
 				const role = layer.get('role');
 				if (role === 'extrude-highlight') layer.setZIndex(10_040);
+				if (role === 'split-overlay') layer.setZIndex(10_048);
 				if (role === 'snap-guides') layer.setZIndex(10_050);
 			}
 			// Layer sources changed — rebind feature snaps while draw/edit is active.
@@ -369,7 +397,12 @@
 			for (const layer of map.getLayers().getArray()) {
 				if (layer === draftLayer) continue;
 				const role = layer.get('role');
-				if (role === 'snap-guides' || role === 'extrude-highlight') continue;
+				if (
+					role === 'snap-guides' ||
+					role === 'extrude-highlight' ||
+					role === 'split-overlay'
+				)
+					continue;
 				layer.changed();
 			}
 			});
@@ -402,13 +435,14 @@
 
 			const geomType = edit ? drawTypeForTool(mode) : null;
 			if (!geomType) {
-				if (mode !== 'modify' && mode !== 'extrude') element.style.cursor = '';
+				if (mode !== 'modify' && mode !== 'extrude' && mode !== 'split') element.style.cursor = '';
 				return;
 			}
 
 			// Draw and geometry-edit tools are mutually exclusive
 			disposeModifySession();
 			disposeExtrudeSession();
+			disposeSplitSession();
 
 			const session = new DrawSnapSession({
 				map,
@@ -451,13 +485,19 @@
 			disposeModifySession();
 
 			if (!edit || mode !== 'modify') {
-				if (mode !== 'draw-polygon' && mode !== 'draw-point' && mode !== 'extrude') {
+				if (
+					mode !== 'draw-polygon' &&
+					mode !== 'draw-point' &&
+					mode !== 'extrude' &&
+					mode !== 'split'
+				) {
 					element.style.cursor = '';
 				}
 				return;
 			}
 
 			disposeExtrudeSession();
+			disposeSplitSession();
 
 			const session = new ModifyVertexSession({
 				map,
@@ -506,13 +546,19 @@
 			disposeExtrudeSession();
 
 			if (!edit || mode !== 'extrude') {
-				if (mode !== 'draw-polygon' && mode !== 'draw-point' && mode !== 'modify') {
+				if (
+					mode !== 'draw-polygon' &&
+					mode !== 'draw-point' &&
+					mode !== 'modify' &&
+					mode !== 'split'
+				) {
 					element.style.cursor = '';
 				}
 				return;
 			}
 
 			disposeModifySession();
+			disposeSplitSession();
 
 			const session = new ModifyExtrudeSession({
 				map,
@@ -552,6 +598,68 @@
 			};
 		});
 
+
+		// Polygon split session — edge-to-edge chord on the focused polygon
+		$effect(() => {
+			const mode = tool;
+			const edit = canEdit;
+			const focusedId = appUi.focusedId;
+			void view;
+
+			disposeSplitSession();
+
+			if (!edit || mode !== 'split') {
+				if (
+					mode !== 'draw-polygon' &&
+					mode !== 'draw-point' &&
+					mode !== 'modify' &&
+					mode !== 'extrude'
+				) {
+					element.style.cursor = '';
+				}
+				return;
+			}
+
+			disposeModifySession();
+			disposeExtrudeSession();
+
+			const session = new SplitPolygonSession({
+				map,
+				onCommit: (commit) => drawCb.onSplitEnd?.(commit)
+			});
+			session.setLocked(toolBox.modifyLocked);
+			splitBox.session = session;
+
+			const bindFocused = () => {
+				const feature = focusedId ? findMapFeatureById(map, focusedId) : null;
+				const poly =
+					feature && feature.getGeometry()?.getType() === 'Polygon' ? feature : null;
+				session.setFeature(poly);
+				element.style.cursor = poly && !toolBox.modifyLocked ? 'crosshair' : '';
+			};
+			bindFocused();
+
+			const sources = [...collectMapVectorSources(map, [draftSource])];
+			for (const source of sources) {
+				source.on('addfeature', bindFocused);
+				source.on('removefeature', bindFocused);
+				source.on('clear', bindFocused);
+			}
+
+			return () => {
+				for (const source of sources) {
+					source.un('addfeature', bindFocused);
+					source.un('removefeature', bindFocused);
+					source.un('clear', bindFocused);
+				}
+				if (splitBox.session === session) {
+					session.dispose();
+					splitBox.session = null;
+				}
+				element.style.cursor = '';
+			};
+		});
+
 		// Esc cancels in-progress draw (edit exit is handled by the page tool state)
 		const onKeyDown = (ev: KeyboardEvent) => {
 			if (ev.key !== 'Escape') return;
@@ -571,6 +679,7 @@
 			disposeDrawSession();
 			disposeModifySession();
 			disposeExtrudeSession();
+			disposeSplitSession();
 			readyCb?.(null);
 			map.setTarget(undefined);
 			map.dispose();

@@ -8,6 +8,9 @@
 	import MapView from '$lib/components/map/MapView.svelte';
 	import MapEditToolbar from '$lib/components/map/MapEditToolbar.svelte';
 	import DrawFeatureModal from '$lib/components/map/DrawFeatureModal.svelte';
+	import SplitFeatureModal, {
+		type SplitFeatureSubmit
+	} from '$lib/components/map/SplitFeatureModal.svelte';
 	import MarkerModal from '$lib/components/map/MarkerModal.svelte';
 	import FeaturePropertiesPanel from '$lib/components/map/FeaturePropertiesPanel.svelte';
 	import ViewLoadingOverlay from '$lib/components/view/ViewLoadingOverlay.svelte';
@@ -17,6 +20,7 @@
 		geoJsonToNormalized,
 		type MapToolMode,
 		type ModifyCommit,
+		type SplitCommit,
 		type WritableGeoJSON
 	} from '$lib/client/map';
 	import type OlMap from 'ol/Map';
@@ -123,6 +127,19 @@
 	let pendingModify = $state<PendingModify | null>(null);
 	let modifySubmitting = $state(false);
 
+	/** Pending polygon split awaiting modal confirmation. */
+	type PendingSplit = {
+		id: string;
+		/** Human label (e.g. area name) when known. */
+		label?: string;
+		table: string;
+		parts: [WritableGeoJSON, WritableGeoJSON];
+	};
+	let pendingSplit = $state<PendingSplit | null>(null);
+	let splitOpen = $state(false);
+	let splitSubmitting = $state(false);
+	let splitError = $state<string | null>(null);
+
 	const targetSpec = $derived(
 		targetTable && crud?.byTable[targetTable] ? crud.byTable[targetTable]! : null
 	);
@@ -157,6 +174,9 @@
 		return focusedFeature.geometry.kind === 'polygon' && spec.drawKinds.includes('polygon');
 	});
 
+	/** Split shares the same polygon update gate as extrude. */
+	const canSplitFocused = $derived(canExtrudeFocused);
+
 	const modifyBlockedReason = $derived.by((): string | null => {
 		if (!roleCanEdit) return null;
 		if (!appUi.focusedId) return 'Select a feature, then Edit';
@@ -179,7 +199,50 @@
 		return null;
 	});
 
-	const modifyLocked = $derived(Boolean(pendingModify) || modifySubmitting);
+	const splitBlockedReason = $derived.by((): string | null => {
+		if (!roleCanEdit) return null;
+		if (!appUi.focusedId) return 'Select a polygon, then Split';
+		if (!focusedFeature) return 'Selected record is not on this map';
+		const spec = crud?.byTable[focusedFeature.table];
+		if (!spec?.canUpdate) return 'Selected layer is read-only';
+		if (focusedFeature.geometry.kind !== 'polygon') return 'Split works on polygons only';
+		if (!spec.drawKinds.includes('polygon')) return 'Selected layer does not allow polygon edits';
+		return null;
+	});
+
+	const modifyLocked = $derived(
+		Boolean(pendingModify) || modifySubmitting || splitOpen || splitSubmitting
+	);
+
+	const splitSpec = $derived.by(() => {
+		if (!pendingSplit || !crud) return null;
+		return crud.byTable[pendingSplit.table] ?? null;
+	});
+
+	const splitFields = $derived(splitSpec?.fields ?? []);
+	const splitRecordOptions = $derived.by((): Record<string, EditorOption[]> => {
+		if (!pendingSplit) return {};
+		const raw = recordOptionsByTable[pendingSplit.table] ?? {};
+		const out: Record<string, EditorOption[]> = {};
+		for (const [field, opts] of Object.entries(raw)) {
+			out[field] = opts.map((o) => ({
+				id: String(o.id),
+				label: o.label,
+				...(o.group !== undefined ? { group: o.group } : {}),
+				...('itemLabel' in o && o.itemLabel !== undefined ? { itemLabel: o.itemLabel } : {})
+			}));
+		}
+		return out;
+	});
+	const splitInitialValues = $derived.by((): Record<string, string> => {
+		const values: Record<string, string> = {};
+		if (splitSpec?.levelField && levelId) values[splitSpec.levelField] = levelId;
+		return values;
+	});
+	const splitLockedFields = $derived.by((): string[] => {
+		if (splitSpec?.levelField && levelId) return [splitSpec.levelField];
+		return [];
+	});
 
 	/** Prefer a single draw target; auto-select when only one exists. */
 	$effect(() => {
@@ -272,26 +335,32 @@
 	// Leave geometry-edit tools if focus is cleared / no longer editable (unless a save needs resolve)
 	$effect(() => {
 		if (tool === 'modify') {
-			if (pendingModify || modifySubmitting) return;
+			if (pendingModify || modifySubmitting || splitOpen) return;
 			if (!canModifyFocused) tool = 'navigate';
 			return;
 		}
 		if (tool === 'extrude') {
-			if (pendingModify || modifySubmitting) return;
+			if (pendingModify || modifySubmitting || splitOpen) return;
 			if (!canExtrudeFocused) tool = 'navigate';
+			return;
+		}
+		if (tool === 'split') {
+			if (pendingModify || modifySubmitting || splitOpen || splitSubmitting) return;
+			if (!canSplitFocused) tool = 'navigate';
 		}
 	});
 
-	// Esc exits Edit/Extrude (draw cancel is handled inside MapView)
+	// Esc exits Edit/Extrude/Split (draw cancel is handled inside MapView)
 	$effect(() => {
-		if (tool !== 'modify' && tool !== 'extrude') return;
+		if (tool !== 'modify' && tool !== 'extrude' && tool !== 'split') return;
 		const onKey = (ev: KeyboardEvent) => {
 			if (ev.key !== 'Escape') return;
+			if (splitOpen) return;
 			if (pendingModify) {
 				cancelPendingModify();
 				return;
 			}
-			if (!modifySubmitting) tool = 'navigate';
+			if (!modifySubmitting && !splitSubmitting) tool = 'navigate';
 		};
 		window.addEventListener('keydown', onKey);
 		return () => window.removeEventListener('keydown', onKey);
@@ -542,6 +611,84 @@
 		void savePendingModify();
 	}
 
+	function onSplitEnd(commit: SplitCommit) {
+		if (!roleCanEdit || splitSubmitting || splitOpen) return;
+		const focused =
+			focusedFeature && focusedFeature.id === commit.id ? focusedFeature : null;
+		const label =
+			(focused?.label && String(focused.label).trim()) ||
+			(focused?.properties?.name != null
+				? String(focused.properties.name).trim()
+				: '') ||
+			undefined;
+		pendingSplit = {
+			id: commit.id,
+			...(label ? { label } : {}),
+			table: commit.table,
+			parts: commit.parts
+		};
+		splitError = null;
+		writeError = null;
+		splitOpen = true;
+	}
+
+	function cancelSplit() {
+		if (splitSubmitting) return;
+		splitOpen = false;
+		pendingSplit = null;
+		splitError = null;
+	}
+
+	async function submitSplit(payload: SplitFeatureSubmit) {
+		if (!pendingSplit || splitSubmitting) return;
+		const table = pendingSplit.table;
+		const keepId = pendingSplit.id;
+		try {
+			splitSubmitting = true;
+			splitError = null;
+			writeError = null;
+
+			// 1) Existing record keeps chosen half (no empty orphan).
+			await postFormAction('updateGeometry', {
+				table,
+				id: keepId,
+				geometry: JSON.stringify(payload.keepGeometry)
+			});
+
+			// 2) Other half → create or assign.
+			let otherId: string | undefined;
+			if (payload.mode === 'existing') {
+				if (!payload.recordId) throw new Error('Pick a record for the second part');
+				const assignPayload: Record<string, unknown> = {
+					table,
+					id: payload.recordId,
+					geometry: JSON.stringify(payload.otherGeometry)
+				};
+				if (splitSpec?.levelField && levelId) assignPayload.level = levelId;
+				const result = await postFormAction<{ id?: string }>('assignFeature', assignPayload);
+				otherId = result.id ?? payload.recordId;
+			} else {
+				const result = await postFormAction<{ id?: string }>('createFeature', {
+					table,
+					geometry: JSON.stringify(payload.otherGeometry),
+					...(payload.values ?? {})
+				});
+				otherId = result.id;
+			}
+
+			splitOpen = false;
+			pendingSplit = null;
+			await invalidateAll();
+			appUi.focusRecord(keepId);
+			void otherId;
+			// Stay on split tool for more cuts if still valid.
+		} catch (err) {
+			splitError = formatWriteError(err, 'Failed to apply split');
+		} finally {
+			splitSubmitting = false;
+		}
+	}
+
 	async function saveFeatureProperties(payload: {
 		table: string;
 		id: string;
@@ -702,7 +849,9 @@
 					{modifyBlockedReason}
 					{canExtrudeFocused}
 					{extrudeBlockedReason}
-					disabled={levelLoading || createOpen || markerOpen || modifyLocked}
+					{canSplitFocused}
+					{splitBlockedReason}
+					disabled={levelLoading || createOpen || markerOpen || splitOpen || modifyLocked}
 				/>
 			</div>
 		{/if}
@@ -801,12 +950,13 @@
 			<!-- OpenLayers is client-only (metric XY plane) -->
 			<MapView
 				{view}
-				canEdit={roleCanEdit && !createOpen && !createSubmitting}
-				tool={createOpen ? 'navigate' : tool}
+				canEdit={roleCanEdit && !createOpen && !createSubmitting && !splitOpen}
+				tool={createOpen || splitOpen ? 'navigate' : tool}
 				{draftGeometry}
 				{modifyLocked}
 				{onDrawEnd}
 				{onModifyEnd}
+				{onSplitEnd}
 				onMapReady={(m) => (mapInstance = m)}
 			/>
 			<!-- Marker embedding-status legend (recolour via marker-status / styles) -->
@@ -898,6 +1048,27 @@
 		{/if}
 	</div>
 </div>
+
+{#if roleCanEdit && pendingSplit && splitSpec}
+	<SplitFeatureModal
+		bind:open={splitOpen}
+		featureId={pendingSplit.id}
+		featureLabel={pendingSplit.label}
+		tableLabel={splitSpec.label}
+		table={splitSpec.table}
+		parts={pendingSplit.parts}
+		fields={splitFields}
+		recordOptions={splitRecordOptions}
+		initialValues={splitInitialValues}
+		lockedFields={splitLockedFields}
+		canCreate={splitSpec.canCreate}
+		canUpdate={splitSpec.canUpdate}
+		submitting={splitSubmitting}
+		error={splitError}
+		onSubmit={submitSplit}
+		onCancel={cancelSplit}
+	/>
+{/if}
 
 {#if roleCanEdit && targetSpec}
 	<DrawFeatureModal

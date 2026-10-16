@@ -1,8 +1,8 @@
 /**
  * Map editor tool modes (C4.1+).
- * Active: navigate, draw-polygon, modify (vertices), extrude (polygon edges).
+ * Active: navigate, draw-polygon, modify (vertices), extrude (polygon edges), split.
  * Draw tools use DrawSnapSession; Edit uses ModifyVertexSession;
- * Extrude uses ModifyExtrudeSession.
+ * Extrude uses ModifyExtrudeSession; Split uses SplitPolygonSession.
  */
 
 export const MAP_TOOL_MODES = [
@@ -11,6 +11,7 @@ export const MAP_TOOL_MODES = [
 	'draw-point',
 	'modify',
 	'extrude',
+	'split',
 	'clear'
 ] as const;
 
@@ -22,7 +23,8 @@ export const MAP_ACTIVE_TOOLS = [
 	'draw-polygon',
 	'draw-point',
 	'modify',
-	'extrude'
+	'extrude',
+	'split'
 ] as const satisfies readonly MapToolMode[];
 
 /** @deprecated Prefer MAP_ACTIVE_TOOLS — create subset. */
@@ -52,7 +54,7 @@ export function isActiveTool(mode: MapToolMode): mode is MapActiveTool {
 
 /** Geometry edit tools that lock focus and share save/retry UX. */
 export function isGeometryEditTool(mode: MapToolMode): boolean {
-	return mode === 'modify' || mode === 'extrude';
+	return mode === 'modify' || mode === 'extrude' || mode === 'split';
 }
 
 /** Human label for toolbar buttons. */
@@ -68,6 +70,8 @@ export function mapToolLabel(mode: MapToolMode): string {
 			return 'Edit';
 		case 'extrude':
 			return 'Extrude';
+		case 'split':
+			return 'Split';
 		case 'clear':
 			return 'Clear';
 	}
@@ -84,6 +88,8 @@ export function mapToolHint(mode: MapToolMode): string | null {
 			return 'Drag corners · click edge/midpoint to add · Alt+click corner to remove · snap · Shift = 0°/90° · release saves · Esc exits';
 		case 'extrude':
 			return 'Hover an edge · drag along its normal · snaps depth to nearby parallel edges/vertices · release saves · Esc exits';
+		case 'split':
+			return 'Select a polygon · click a point on one edge · click another edge to cut · Shift = 0°/90° · Esc exits';
 		case 'clear':
 			return 'Clear geometry on the focused feature';
 		default:

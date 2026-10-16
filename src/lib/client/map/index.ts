@@ -24,6 +24,16 @@ export {
 
 export type { ModifyCommit } from './modify-vertex-session';
 
+export type { SplitCommit } from './split-polygon-session';
+
+export {
+	splitPolygonAtPoints,
+	splitPolygonByEdgePoints,
+	splitResultToPolygons,
+	type PolygonSplitResult,
+	type SplitEdgePoint
+} from './polygon-split';
+
 export {
 	applyDrawConstraints,
 	collectVertices,

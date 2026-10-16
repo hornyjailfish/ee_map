@@ -3,12 +3,14 @@
 	 * Map create/edit tool strip (C4.1).
 	 * Edit = move / add / remove vertices (ModifyVertexSession).
 	 * Extrude = polygon edge push/pull (ModifyExtrudeSession).
+	 * Split = edge-to-edge chord cut (SplitPolygonSession).
 	 * Point / clear still placeholders.
 	 */
 	import PencilIcon from '@lucide/svelte/icons/pencil';
 	import PointerIcon from '@lucide/svelte/icons/mouse-pointer-2';
 	import LassoIcon from '@lucide/svelte/icons/lasso';
 	import ExpandIcon from '@lucide/svelte/icons/expand';
+	import ScissorsIcon from '@lucide/svelte/icons/scissors';
 	import MapPinIcon from '@lucide/svelte/icons/map-pin';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import * as ButtonGroup from '$lib/components/ui/button-group/index.js';
@@ -40,6 +42,10 @@
 		canExtrudeFocused?: boolean;
 		/** Short reason when Extrude is disabled. */
 		extrudeBlockedReason?: string | null;
+		/** Focused feature can be split (update + polygon). */
+		canSplitFocused?: boolean;
+		/** Short reason when Split is disabled. */
+		splitBlockedReason?: string | null;
 		disabled?: boolean;
 		onToolChange?: (tool: MapToolMode) => void;
 		onTargetChange?: (table: string | null) => void;
@@ -58,6 +64,8 @@
 		modifyBlockedReason = null,
 		canExtrudeFocused = false,
 		extrudeBlockedReason = null,
+		canSplitFocused = false,
+		splitBlockedReason = null,
 		disabled = false,
 		onToolChange,
 		onTargetChange
@@ -74,6 +82,7 @@
 	const markerReady = $derived(canEdit && hasPointTargets && Boolean(levelId) && !disabled);
 	const editReady = $derived(canEdit && canModifyFocused && !disabled);
 	const extrudeReady = $derived(canEdit && canExtrudeFocused && !disabled);
+	const splitReady = $derived(canEdit && canSplitFocused && !disabled);
 
 	function setTool(next: MapToolMode) {
 		if (!canEdit || disabled) return;
@@ -81,6 +90,7 @@
 		if (next === 'draw-point' && !markerReady && tool !== 'draw-point') return;
 		if (next === 'modify' && !editReady && tool !== 'modify') return;
 		if (next === 'extrude' && !extrudeReady && tool !== 'extrude') return;
+		if (next === 'split' && !splitReady && tool !== 'split') return;
 		tool = next;
 		onToolChange?.(next);
 	}
@@ -167,6 +177,19 @@
 				<ExpandIcon class="size-3.5" data-icon="inline-start" />
 				Extrude
 			</Button>
+			<Button
+				type="button"
+				size="sm"
+				variant={tool === 'split' ? 'default' : 'outline'}
+				disabled={!splitReady && tool !== 'split'}
+				title={splitReady
+					? 'Cut polygon with a chord between two edges'
+					: (splitBlockedReason ?? 'Select an editable polygon first')}
+				onclick={() => setTool('split')}
+			>
+				<ScissorsIcon class="size-3.5" data-icon="inline-start" />
+				Split
+			</Button>
 		</ButtonGroup.Root>
 
 		{#if hasTargets && (tool === 'navigate' || tool === 'draw-polygon')}
@@ -198,6 +221,8 @@
 			<span class="text-xs text-muted-foreground">{modifyBlockedReason}</span>
 		{:else if !canExtrudeFocused && extrudeBlockedReason}
 			<span class="text-xs text-muted-foreground">{extrudeBlockedReason}</span>
+		{:else if !canSplitFocused && splitBlockedReason}
+			<span class="text-xs text-muted-foreground">{splitBlockedReason}</span>
 		{/if}
 	{/if}
 </div>

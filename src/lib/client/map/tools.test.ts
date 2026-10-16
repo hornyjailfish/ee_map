@@ -14,19 +14,23 @@ describe('map tools', () => {
 	it('recognizes known modes', () => {
 		expect(isMapToolMode('modify')).toBe(true);
 		expect(isMapToolMode('extrude')).toBe(true);
+		expect(isMapToolMode('split')).toBe(true);
 		expect(isMapToolMode('nope')).toBe(false);
 	});
 
-	it('lists modify and extrude as active and clear as future', () => {
+	it('lists modify, extrude, split as active and clear as future', () => {
 		expect(MAP_ACTIVE_TOOLS).toContain('modify');
 		expect(MAP_ACTIVE_TOOLS).toContain('extrude');
+		expect(MAP_ACTIVE_TOOLS).toContain('split');
 		expect(MAP_FUTURE_TOOLS).toContain('clear');
 		expect(MAP_FUTURE_TOOLS).not.toContain('modify');
 		expect(isActiveTool('modify')).toBe(true);
 		expect(isActiveTool('extrude')).toBe(true);
+		expect(isActiveTool('split')).toBe(true);
 		expect(isCreateTool('modify')).toBe(false);
 		expect(isGeometryEditTool('modify')).toBe(true);
 		expect(isGeometryEditTool('extrude')).toBe(true);
+		expect(isGeometryEditTool('split')).toBe(true);
 		expect(isGeometryEditTool('draw-polygon')).toBe(false);
 	});
 
@@ -41,5 +45,8 @@ describe('map tools', () => {
 		expect(mapToolHint('extrude')).toMatch(/edge/i);
 		expect(mapToolHint('extrude')).toMatch(/normal/i);
 		expect(mapToolHint('extrude')).toMatch(/parallel/i);
+		expect(mapToolLabel('split')).toBe('Split');
+		expect(mapToolHint('split')).toMatch(/edge/i);
+		expect(mapToolHint('split')).toMatch(/Shift/i);
 	});
 });
