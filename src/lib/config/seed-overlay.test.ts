@@ -129,7 +129,12 @@ export const EE_OVERLAY_SEED: AppConfigOverlay = {
 				geometryField: 'geometry',
 				layerGroup: 'tenancy',
 				styleKey: 'rents',
-				zIndex: 20
+				zIndex: 20,
+				related: {
+					table: 'shops',
+					via: 'area',
+					labelField: 'name'
+				}
 			},
 			markers: {
 				levelField: 'level',
@@ -390,7 +395,8 @@ describe('EE app_config seed → merge', () => {
 			levelField: 'level',
 			geometryField: 'geometry',
 			zIndex: 20,
-			styleKey: 'rents'
+			styleKey: 'rents',
+			related: { table: 'shops', via: 'area', labelField: 'name' }
 		});
 		expect(layers.find((l) => l.table === 'markers')).toMatchObject({
 			levelField: 'level',

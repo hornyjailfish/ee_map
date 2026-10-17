@@ -3,6 +3,10 @@ import { getRequestEvent } from '$app/server';
 import type { Cookies } from '@sveltejs/kit';
 import type { AnyAuth, Tokens } from 'surrealdb';
 import { invalidateConfigCache } from '$lib/server/config';
+import {
+	envDefaultOverlayId,
+	sanitizeOverlayId
+} from '$lib/server/config/overlay-id';
 import { applySelection, dbConfig, type DbSelection } from '$lib/server/db';
 
 const ACCESS_COOKIE = 'sdb_access';
@@ -10,6 +14,8 @@ const REFRESH_COOKIE = 'sdb_refresh';
 const NS_COOKIE = 'sdb_ns';
 const DB_COOKIE = 'sdb_db';
 const USER_COOKIE = 'sdb_user';
+/** Active `app_config:<id>` key (overrides APP_CONFIG_ID env when set). */
+const APP_CONFIG_COOKIE = 'sdb_app_config';
 
 const TOKEN_MAX_AGE = 60 * 60 * 24 * 30; // 30 days
 const SELECTION_MAX_AGE = 60 * 60 * 24 * 365; // 1 year
@@ -29,6 +35,8 @@ export type AuthCookies = {
 	tokens: Tokens | null;
 	selection: DbSelection;
 	user: string | null;
+	/** Active app_config record key. */
+	appConfigId: string;
 };
 
 /** Best-effort decode of Surreal access JWT payload (no signature check). */
@@ -67,8 +75,32 @@ export function readAuthState(cookies: Cookies = getRequestEvent().cookies): Aut
 			namespace: cookies.get(NS_COOKIE) || dbConfig.namespace,
 			database: cookies.get(DB_COOKIE) || dbConfig.database
 		},
-		user: cookies.get(USER_COOKIE) || usernameFromToken(access) || null
+		user: cookies.get(USER_COOKIE) || usernameFromToken(access) || null,
+		appConfigId: readAppConfigId(cookies)
 	};
+}
+
+/** Active overlay id: cookie if present, else env `APP_CONFIG_ID`, else `main`. */
+export function readAppConfigId(cookies: Cookies = getRequestEvent().cookies): string {
+	const fromCookie = cookies.get(APP_CONFIG_COOKIE);
+	if (fromCookie != null && fromCookie.trim() !== '') {
+		return sanitizeOverlayId(fromCookie, envDefaultOverlayId());
+	}
+	return envDefaultOverlayId();
+}
+
+/** Remember which `app_config` row map/table/config should use. */
+export function saveAppConfigId(
+	id: string,
+	cookies: Cookies = getRequestEvent().cookies
+): void {
+	const clean = sanitizeOverlayId(id, envDefaultOverlayId());
+	cookies.set(APP_CONFIG_COOKIE, clean, cookieOpts(SELECTION_MAX_AGE));
+}
+
+/** Drop overlay-id override so env / `main` applies again. */
+export function clearAppConfigId(cookies: Cookies = getRequestEvent().cookies): void {
+	cookies.delete(APP_CONFIG_COOKIE, { path: '/' });
 }
 
 /** Persist access/refresh tokens after signin/signup/authenticate. */
@@ -95,6 +127,7 @@ export function clearTokens(cookies: Cookies = getRequestEvent().cookies): void 
 	cookies.delete(ACCESS_COOKIE, { path: '/' });
 	cookies.delete(REFRESH_COOKIE, { path: '/' });
 	cookies.delete(USER_COOKIE, { path: '/' });
+	// Keep app_config + ns/db selection across sign-out so the workspace sticks.
 }
 
 /** Persist last selected namespace/database. */

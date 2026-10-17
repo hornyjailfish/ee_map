@@ -2,9 +2,10 @@
  * resolveAppConfig(session) — introspect + overlay + merge, with ns/db cache.
  *
  * AutoProfile (INFO STRUCTURE) is relatively expensive → cached by ns::db.
- * Overlay (`app_config:main`) is one SELECT and owns display recipes → always
+ * Overlay (`app_config:<id>`) is one SELECT and owns display recipes → always
  * re-read and re-merged so OWNER/seed edits to `entities.*.display` apply without
  * restarting the server or changing database selection.
+ * Active id: cookie / APP_CONFIG_ID env / `main` (see overlay-id.ts).
  */
 
 import type { Surreal } from 'surrealdb';
@@ -43,7 +44,7 @@ function selectionKey(session: Surreal, override?: string): string {
 /**
  * Build ResolvedConfig for the active session (user ns/db).
  *
- * Steps: INFO STRUCTURE → AutoProfile (cached), SELECT app_config:main → overlay
+ * Steps: INFO STRUCTURE → AutoProfile (cached), SELECT app_config:<id> → overlay
  * (always), merge.
  * Drop AutoProfile cache with `invalidateConfigCache` (e.g. selection change).
  */

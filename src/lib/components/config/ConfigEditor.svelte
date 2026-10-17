@@ -60,6 +60,12 @@
 	type Props = {
 		overlay: AppConfigOverlay;
 		hasStoredOverlay: boolean;
+		/** Active `app_config:<id>` key. */
+		overlayId: string;
+		/** Keys already in DB (+ active). */
+		availableOverlayIds?: string[];
+		/** Env default when cookie cleared. */
+		envOverlayId?: string;
 		knownTables: string[];
 		knownRelations: string[];
 		diagnostics: Diagnostic[];
@@ -69,6 +75,9 @@
 	let {
 		overlay: initialOverlay,
 		hasStoredOverlay,
+		overlayId,
+		availableOverlayIds = [],
+		envOverlayId = 'main',
 		knownTables,
 		knownRelations,
 		diagnostics,
@@ -99,6 +108,10 @@
 	let transferMessage = $state<string | null>(null);
 	let transferOk = $state(false);
 	let importInput = $state<HTMLInputElement | null>(null);
+	/** Switch / create another app_config row id. */
+	let switchId = $state('');
+	let switchBusy = $state(false);
+	let switchMessage = $state<string | null>(null);
 
 	const draftSafe = $derived(draft ?? emptyOverlay());
 	const dirty = $derived(stringifyOverlay(draftSafe) !== baseline);
@@ -118,6 +131,11 @@
 		)
 	);
 	const payloadJson = $derived(stringifyOverlay(draftSafe));
+	const overlayOptions = $derived(
+		[...new Set([overlayId, envOverlayId, ...availableOverlayIds].filter(Boolean))].sort((a, b) =>
+			a.localeCompare(b)
+		)
+	);
 
 	const activeEntity = $derived.by((): EntityOverlay | undefined => {
 		if (!selectedEntity || !draftSafe.entities) return undefined;
@@ -374,6 +392,30 @@
 			}
 		};
 	};
+
+	const onSelectOverlay: SubmitFunction = () => {
+		switchBusy = true;
+		switchMessage = null;
+		formMessage = null;
+		return async ({ result, update }) => {
+			try {
+				if (result.type === 'success') {
+					const data = result.data as { overlayId?: string } | undefined;
+					switchMessage = `Using app_config:${data?.overlayId ?? (switchId || '…')}`;
+					switchId = '';
+					await invalidateAll();
+				} else if (result.type === 'failure') {
+					const data = result.data as { message?: string } | undefined;
+					switchMessage = data?.message ?? 'Could not switch overlay';
+				} else if (result.type === 'error') {
+					switchMessage = result.error?.message ?? 'Could not switch overlay';
+				}
+				await update({ reset: false });
+			} finally {
+				switchBusy = false;
+			}
+		};
+	};
 </script>
 
 <div class="flex h-full min-h-0 flex-col">
@@ -383,7 +425,7 @@
 		<div class="flex min-w-0 flex-wrap items-center gap-2">
 			<span class="text-sm font-medium tracking-tight">App config</span>
 			<Badge variant="secondary">OWNER</Badge>
-			<span class="text-xs text-muted-foreground">app_config:main</span>
+			<span class="font-mono text-xs text-muted-foreground">app_config:{overlayId}</span>
 			{#if hasStoredOverlay}
 				<Badge variant="outline">stored</Badge>
 			{:else}
@@ -428,6 +470,86 @@
 					<Alert.Description>{loadError}</Alert.Description>
 				</Alert.Root>
 			{/if}
+
+			<Card.Root class="border-dashed">
+				<Card.Header class="pb-2">
+					<Card.Title class="text-sm">Active overlay record</Card.Title>
+					<Card.Description class="text-xs">
+						Multiple <span class="font-mono">app_config</span> rows can live in one DB. Cookie
+						overrides env <span class="font-mono">APP_CONFIG_ID</span> (default
+						<span class="font-mono">{envOverlayId}</span>). Seed still targets
+						<span class="font-mono">main</span> with INSERT IGNORE — it will not overwrite your
+						test rows. Switching does not save the current draft.
+					</Card.Description>
+				</Card.Header>
+				<Card.Content class="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+					<form
+						method="POST"
+						action="?/selectOverlay"
+						class="flex min-w-0 flex-1 flex-col gap-1.5 sm:max-w-xs"
+						use:enhance={onSelectOverlay}
+					>
+						<label class="text-[11px] text-muted-foreground" for="overlay-pick">Existing</label>
+						<div class="flex gap-2">
+							<NativeSelect.Root
+								id="overlay-pick"
+								name="id"
+								value={overlayId}
+								disabled={switchBusy || dirty}
+								class="h-8 min-w-0 flex-1"
+							>
+								{#each overlayOptions as id (id)}
+									<NativeSelect.Option value={id}
+										>{id}{id === overlayId ? ' (active)' : ''}</NativeSelect.Option
+									>
+								{/each}
+							</NativeSelect.Root>
+							<Button type="submit" size="sm" variant="outline" disabled={switchBusy || dirty}>
+								{#if switchBusy}
+									<Spinner data-icon="inline-start" />
+								{/if}
+								Open
+							</Button>
+						</div>
+					</form>
+
+					<form
+						method="POST"
+						action="?/selectOverlay"
+						class="flex min-w-0 flex-1 flex-col gap-1.5 sm:max-w-xs"
+						use:enhance={onSelectOverlay}
+					>
+						<label class="text-[11px] text-muted-foreground" for="overlay-new"
+							>New or other id</label
+						>
+						<div class="flex gap-2">
+							<Input
+								id="overlay-new"
+								name="id"
+								bind:value={switchId}
+								placeholder="e.g. map-related"
+								class="h-8 font-mono text-xs"
+								disabled={switchBusy || dirty}
+								autocomplete="off"
+							/>
+							<Button
+								type="submit"
+								size="sm"
+								disabled={switchBusy || dirty || !switchId.trim()}
+							>
+								Use
+							</Button>
+						</div>
+					</form>
+				</Card.Content>
+				{#if dirty}
+					<Card.Footer class="pt-0 text-[11px] text-amber-700 dark:text-amber-400">
+						Save or Reset the draft before switching overlays.
+					</Card.Footer>
+				{:else if switchMessage}
+					<Card.Footer class="pt-0 text-[11px] text-muted-foreground">{switchMessage}</Card.Footer>
+				{/if}
+			</Card.Root>
 
 			{#if formMessage}
 				<Alert.Root variant={formOk ? 'default' : 'destructive'}>

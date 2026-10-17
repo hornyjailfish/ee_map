@@ -2,6 +2,16 @@ export { introspect } from './introspect';
 export { loadOverlay, normalizeOverlay } from './load-overlay';
 export { saveOverlay } from './save-overlay';
 export {
+	DEFAULT_OVERLAY_ID,
+	OVERLAY_TABLE,
+	envDefaultOverlayId,
+	listOverlayIds,
+	overlayRecordString,
+	recordIdKey,
+	resolveOverlayId,
+	sanitizeOverlayId
+} from './overlay-id';
+export {
 	resolveAppConfig,
 	invalidateConfigCache,
 	configCacheSize,

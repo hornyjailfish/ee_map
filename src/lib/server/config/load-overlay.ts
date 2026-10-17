@@ -1,29 +1,39 @@
 /**
- * Load sparse AppConfigOverlay from `app_config:main`.
+ * Load sparse AppConfigOverlay from `app_config:<id>`.
  * Missing table / record → null (merge treats as empty overlay).
+ *
+ * Active id: cookie / `APP_CONFIG_ID` / `main` (see overlay-id.ts).
  */
 
 import { RecordId, type Surreal } from 'surrealdb';
 import type { AppConfigOverlay } from '$lib/config/types';
 import { liftOverlayToV3 } from '$lib/config/overlay-io';
-
-const OVERLAY_TABLE = 'app_config';
-const OVERLAY_ID = 'main';
+import { OVERLAY_TABLE, resolveOverlayId } from './overlay-id';
 
 /**
- * Select `app_config:main` and normalize to AppConfigOverlay | null.
+ * Select active `app_config` row and normalize to AppConfigOverlay | null.
  * Never throws on missing table/record — returns null and logs soft failures.
  */
-export async function loadOverlay(session: Surreal): Promise<AppConfigOverlay | null> {
+export async function loadOverlay(
+	session: Surreal,
+	overlayId?: string | null
+): Promise<AppConfigOverlay | null> {
+	const id = resolveOverlayId(overlayId);
 	try {
 		const row = await session.select<Record<string, unknown>>(
-			new RecordId(OVERLAY_TABLE, OVERLAY_ID)
+			new RecordId(OVERLAY_TABLE, id)
 		);
 		return normalizeOverlay(row);
 	} catch (error) {
 		// Soft-fail when table/record missing in a fresh DB before seed/sync.
 		const message = error instanceof Error ? error.message : String(error);
-		if (!/not found|no such|does not exist|failed to select/i.test(message)) {
+		const lower = message.toLowerCase();
+		const soft =
+			lower.includes('not found') ||
+			lower.includes('no such') ||
+			lower.includes('does not exist') ||
+			lower.includes('failed to select');
+		if (!soft) {
 			console.warn('[config/load-overlay] select failed:', message);
 		}
 		return null;
@@ -54,6 +64,8 @@ export function normalizeOverlay(raw: unknown): AppConfigOverlay | null {
 		version === '1' ||
 		version === 2 ||
 		version === '2' ||
+		version === 3 ||
+		version === '3' ||
 		row.entities != null ||
 		row.edges != null ||
 		row.graph != null ||

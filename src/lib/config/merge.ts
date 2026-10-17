@@ -411,7 +411,24 @@ function resolveEntityMap(mapOv: MapLayerOverlay, fields: AutoProfileField[]): R
 	if (mapOv.styleKey !== undefined) map.styleKey = mapOv.styleKey;
 	if (mapOv.zIndex !== undefined) map.zIndex = mapOv.zIndex;
 
+	const related = resolveMapRelated(mapOv.related);
+	if (related) map.related = related;
+
 	return map;
+}
+
+function resolveMapRelated(
+	related: MapLayerOverlay['related']
+): ResolvedEntityMap['related'] | undefined {
+	if (!related) return undefined;
+	const table = typeof related.table === 'string' ? related.table.trim() : '';
+	const via = typeof related.via === 'string' ? related.via.trim() : '';
+	if (!table || !via) return undefined;
+	const labelField =
+		typeof related.labelField === 'string' && related.labelField.trim()
+			? related.labelField.trim()
+			: 'name';
+	return { table, via, labelField };
 }
 
 function buildMapLayers(tables: ResolvedEntity[], diagnostics: Diagnostic[]): ResolvedMapLayer[] {
@@ -441,6 +458,7 @@ function buildMapLayers(tables: ResolvedEntity[], diagnostics: Diagnostic[]): Re
 		};
 		if (levelField !== undefined) layer.levelField = levelField;
 		if (entity.map.layerGroup !== undefined) layer.layerGroup = entity.map.layerGroup;
+		if (entity.map.related !== undefined) layer.related = entity.map.related;
 		layers.push(layer);
 	}
 

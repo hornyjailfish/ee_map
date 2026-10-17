@@ -12,6 +12,11 @@ declare global {
 			tokens: Tokens | null;
 			/** Last selected namespace/database (from cookies, with env defaults). */
 			selection: DbSelection;
+			/**
+			 * Active `app_config:<id>` key (cookie override, else APP_CONFIG_ID / main).
+			 * Used by load/save overlay and resolveAppConfig.
+			 */
+			appConfigId: string;
 			/** Optional authenticated principal id/label once you resolve it. */
 			user?: string;
 			/** Set when Surreal connect/auth failed; request still continues. */

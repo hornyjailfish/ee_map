@@ -4,20 +4,39 @@ import { z } from 'zod';
 import type { AppConfigOverlay, Diagnostic } from '$lib/config/types';
 import { emptyOverlay, softParseOverlay } from '$lib/config/overlay-io';
 import { canOwn } from '$lib/roles';
+import { saveAppConfigId } from '$lib/server/auth';
 import { getUserRoles } from '$lib/server/catalog';
-import { loadOverlay, saveOverlay, invalidateConfigCache } from '$lib/server/config';
+import {
+	loadOverlay,
+	saveOverlay,
+	invalidateConfigCache,
+	listOverlayIds,
+	resolveOverlayId,
+	sanitizeOverlayId,
+	envDefaultOverlayId
+} from '$lib/server/config';
 import { MutateError } from '$lib/server/data';
 import { importDatabase } from '$lib/server/db-transfer';
 
 const saveSchema = z.object({ overlay: z.string().nullable().default(null) });
+
+const selectSchema = z.object({
+	id: z.string().min(1).max(64)
+});
 
 const MAX_IMPORT_BYTES = 50 * 1024 * 1024;
 
 export type ConfigPageData = {
 	/** Sparse overlay currently stored (or empty starter). */
 	overlay: AppConfigOverlay;
-	/** Whether `app_config:main` exists. */
+	/** Whether the active `app_config:<id>` row exists. */
 	hasStoredOverlay: boolean;
+	/** Active overlay record key (`main`, `map-related`, …). */
+	overlayId: string;
+	/** Existing app_config keys in this DB (+ active id). */
+	availableOverlayIds: string[];
+	/** Env default when cookie is cleared. */
+	envOverlayId: string;
 	/** Known normal tables from resolved config (hints for entity keys). */
 	knownTables: string[];
 	/** Known relation tables from resolved config (hints for edge keys). */
@@ -39,6 +58,8 @@ function failFromError(err: unknown, fallback = 'Request failed') {
 export const load: PageServerLoad = async ({ parent, locals }): Promise<ConfigPageData> => {
 	const layout = await parent();
 	const roles = layout.userRoles ?? [];
+	const overlayId = resolveOverlayId(locals.appConfigId);
+	const envOverlayId = envDefaultOverlayId();
 
 	// Client hides the link; server is the real gate.
 	if (!canOwn(roles)) {
@@ -49,6 +70,9 @@ export const load: PageServerLoad = async ({ parent, locals }): Promise<ConfigPa
 		return {
 			overlay: emptyOverlay(),
 			hasStoredOverlay: false,
+			overlayId,
+			availableOverlayIds: [overlayId],
+			envOverlayId,
 			knownTables: [],
 			knownRelations: [],
 			diagnostics: [],
@@ -57,11 +81,15 @@ export const load: PageServerLoad = async ({ parent, locals }): Promise<ConfigPa
 	}
 
 	try {
-		const stored = await loadOverlay(locals.session);
+		const stored = await loadOverlay(locals.session, overlayId);
+		const availableOverlayIds = await listOverlayIds(locals.session, { ensure: overlayId });
 		const config = layout.config;
 		return {
 			overlay: stored ?? emptyOverlay(),
 			hasStoredOverlay: stored != null,
+			overlayId,
+			availableOverlayIds,
+			envOverlayId,
 			knownTables: config?.tables.map((t) => t.name) ?? [],
 			knownRelations: config?.relations.map((r) => r.name) ?? [],
 			diagnostics: config?.diagnostics ?? [],
@@ -73,6 +101,9 @@ export const load: PageServerLoad = async ({ parent, locals }): Promise<ConfigPa
 		return {
 			overlay: emptyOverlay(),
 			hasStoredOverlay: false,
+			overlayId,
+			availableOverlayIds: [overlayId],
+			envOverlayId,
 			knownTables: [],
 			knownRelations: [],
 			diagnostics: [],
@@ -100,11 +131,39 @@ export const actions: Actions = {
 			if (!parsed.ok) {
 				return fail(400, { code: 'invalid_overlay', message: parsed.message });
 			}
-			const overlay = await saveOverlay(locals.session, roles, parsed.overlay);
+			const overlay = await saveOverlay(
+				locals.session,
+				roles,
+				parsed.overlay,
+				locals.appConfigId
+			);
 			return { ok: true as const, overlay };
 		} catch (err) {
 			return failFromError(err, 'Save failed');
 		}
+	},
+
+	/**
+	 * Switch active `app_config:<id>` (cookie). Creates nothing until Save —
+	 * empty / new keys edit an in-memory starter until first UPSERT.
+	 */
+	selectOverlay: async ({ request, cookies }) => {
+		const parsed = selectSchema.safeParse(
+			Object.fromEntries((await request.formData()).entries())
+		);
+		if (!parsed.success) {
+			return fail(400, { code: 'invalid_id', message: 'Overlay id is required' });
+		}
+		const id = sanitizeOverlayId(parsed.data.id, '');
+		if (!id) {
+			return fail(400, {
+				code: 'invalid_id',
+				message: 'Use letters, digits, _ or - only (max 64)'
+			});
+		}
+		saveAppConfigId(id, cookies);
+		// Overlay always re-reads; auto cache is schema-only — still fine to leave.
+		return { ok: true as const, overlayId: id };
 	},
 
 	/** Import a .surql dump into the active ns/db (OWNER). */

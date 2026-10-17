@@ -26,10 +26,11 @@ const handleParaglide: Handle = ({ event, resolve }) =>
 
 const handleSurreal: Handle = async ({ event, resolve }) => {
 	const { cookies, locals } = event;
-	const { tokens, selection, user } = readAuthState(cookies);
+	const { tokens, selection, user, appConfigId } = readAuthState(cookies);
 
 	locals.tokens = tokens;
 	locals.selection = selection;
+	locals.appConfigId = appConfigId;
 	locals.session = undefined;
 	locals.user = user ?? undefined;
 	locals.dbError = undefined;

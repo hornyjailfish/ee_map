@@ -210,6 +210,20 @@ export type GraphNodeOverlay = {
 	layoutOptions?: Record<string, string>;
 };
 
+/**
+ * Inverse link for map labels / feature panel (geometry stays on the layer table).
+ * Example: rents layer + `{ table: 'shops', via: 'area' }` → shops.area → rents:id.
+ * Intended 1:1 display identity (brand on a unit); not a 1→N child list.
+ */
+export type MapLayerRelatedOverlay = {
+	/** Table that points at this layer's rows. */
+	table: string;
+	/** FK field on that table (e.g. `area` on shops). */
+	via: string;
+	/** Field used for map label when present (default `name`). */
+	labelField?: string;
+};
+
 /** Per-table map layer knobs under `map.layers.<table>` (v2). Presence = enabled. */
 export type MapLayerOverlay = {
 	levelField?: string;
@@ -218,6 +232,8 @@ export type MapLayerOverlay = {
 	/** Client registry key for OpenLayers style factory. */
 	styleKey?: string;
 	zIndex?: number;
+	/** Optional inverse-link enrichment for labels / inspector. */
+	related?: MapLayerRelatedOverlay;
 };
 
 /** Sparse graph presentation / layout deltas on app_config (v2). */
@@ -357,6 +373,12 @@ export type ResolvedGraphNode = {
 	layoutOptions?: Record<string, string>;
 };
 
+export type ResolvedMapLayerRelated = {
+	table: string;
+	via: string;
+	labelField: string;
+};
+
 export type ResolvedEntityMap = {
 	enabled: boolean;
 	levelField?: string;
@@ -364,6 +386,7 @@ export type ResolvedEntityMap = {
 	layerGroup?: string;
 	styleKey?: string;
 	zIndex?: number;
+	related?: ResolvedMapLayerRelated;
 };
 
 /**
@@ -446,6 +469,8 @@ export type ResolvedMapLayer = {
 	/** Defaults to table name when overlay omits styleKey. */
 	styleKey: string;
 	zIndex: number;
+	/** Inverse-link enrichment when configured on the overlay layer. */
+	related?: ResolvedMapLayerRelated;
 };
 
 export type ResolvedFloorPlan = {

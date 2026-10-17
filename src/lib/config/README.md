@@ -4,6 +4,9 @@ The config layer is the product spine: live DB schema + a sparse JSON overlay â†
 one `ResolvedConfig` that drives the table, graph, and map views. This file is the
 single place to understand how that works and the routine for changing it.
 
+> **Readable overview** (nested/combined fields, map `related`, transform flow):
+> [`docs/app-config.md`](../../../docs/app-config.md).
+>
 > Companion doc: `PLAN.md` (section **0. Configuration layer**) holds the original
 > design intent. This file is the "how to actually touch it" version.
 
