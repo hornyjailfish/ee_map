@@ -61,6 +61,10 @@ export type MapFeatureRelatedLink = {
 	id: string | null;
 	/** Related display name, or null when vacant. */
 	title: string | null;
+	/** Schema label for the configured label field. */
+	labelFieldLabel: string;
+	/** Schema label for the related record id. */
+	idLabel: string;
 	/** EDITOR may pick/clear an existing related row. */
 	canLink: boolean;
 	/** EDITOR may create a new related row pointed at this feature. */

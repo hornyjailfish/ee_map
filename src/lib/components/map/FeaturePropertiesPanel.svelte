@@ -541,12 +541,29 @@
 									</div>
 								</div>
 							{:else}
-								<p class="truncate text-xs" title={related.title ?? undefined}>
-									{related.title?.trim() ? related.title : 'Vacant'}
-								</p>
-								{#if related.id}
-									<p class="truncate font-mono text-[10px] text-muted-foreground">{related.id}</p>
-								{/if}
+								<dl class="flex flex-col gap-0.5">
+									<div
+										class="grid grid-cols-[5.5rem_minmax(0,1fr)] items-baseline gap-x-2 gap-y-0 py-0.5"
+									>
+										<dt class="truncate text-[10px] text-muted-foreground">{related.labelFieldLabel}</dt>
+										<dd
+											class="truncate text-xs text-foreground"
+											title={related.title ?? undefined}
+										>
+											{related.title?.trim() ? related.title : 'Vacant'}
+										</dd>
+									</div>
+									{#if related.id}
+										<div
+											class="grid grid-cols-[5.5rem_minmax(0,1fr)] items-baseline gap-x-2 gap-y-0 py-0.5"
+										>
+											<dt class="truncate text-[10px] text-muted-foreground">{related.idLabel}</dt>
+											<dd class="truncate font-mono text-[10px] text-muted-foreground">
+												{related.id}
+											</dd>
+										</div>
+									{/if}
+								</dl>
 							{/if}
 						</div>
 					{/if}

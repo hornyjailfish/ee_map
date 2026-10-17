@@ -294,12 +294,19 @@ export const getMapFeatureRecord = query(
 				}
 			}
 
+			const relatedLabelField = relatedEntity?.fields.find(
+				(field) => field.name === relatedSpec.labelField
+			);
+			const relatedIdField = relatedEntity?.fields.find((field) => field.name === 'id');
+
 			detail.related = {
 				table: relatedSpec.table,
 				tableLabel: relatedEntity?.label ?? relatedSpec.table,
 				via: relatedSpec.via,
 				id: linked?.id ?? null,
 				title: linked?.label || null,
+				labelFieldLabel: relatedLabelField?.label ?? relatedSpec.labelField,
+				idLabel: relatedIdField?.label ?? 'id',
 				canLink,
 				canCreate: roleCanEdit && canCreateRelated,
 				options: relatedOptions
