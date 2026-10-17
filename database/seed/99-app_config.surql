@@ -172,7 +172,13 @@ INSERT IGNORE INTO app_config [
 					geometryField: 'geometry',
 					layerGroup: 'tenancy',
 					styleKey: 'rents',
-					zIndex: 20
+					zIndex: 20,
+					# Shop brand on the unit polygon (shops.area → rents); vacant → rent name
+					related: {
+						table: 'shops',
+						via: 'area',
+						labelField: 'name'
+					}
 				},
 				markers: {
 					levelField: 'level',

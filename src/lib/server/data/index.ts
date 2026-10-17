@@ -27,6 +27,18 @@ export {
 } from './query-graph-bundle';
 
 export {
+	linkRelatedToFeature,
+	loadMapRelatedLabels,
+	loadRelatedTableOptions,
+	queryRelatedForTarget,
+	relatedForLayerTable,
+	relatedSpecsFromConfig,
+	type LinkRelatedInput,
+	type LinkRelatedResult,
+	type MapRelatedRow
+} from './query-map-related';
+
+export {
 	loadRecordLabels,
 	loadRecordOptions,
 	type RecordLabelLoadResult,

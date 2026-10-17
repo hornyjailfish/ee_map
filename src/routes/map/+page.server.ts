@@ -11,6 +11,8 @@ import {
 	deleteRecord,
 	geometryFieldName,
 	isValidTableName,
+	linkRelatedToFeature,
+	loadMapRelatedLabels,
 	loadRecordOptions,
 	MutateError,
 	patchGeometry,
@@ -26,6 +28,7 @@ import {
 	toMap,
 	mapLevels,
 	applyStyleVariants,
+	applyRelatedLabels,
 	type MapFeature,
 	type MapViewModel
 } from '$lib/transform/to-map';
@@ -99,6 +102,16 @@ const createMarkerViewSchema = z.object({
 const deleteMarkerSchema = z.object({ id: z.string().default('') });
 
 const updateMarkerViewSchema = z.object({ id: z.string().default('') }).catchall(z.string());
+
+/** Assign / clear / create inverse-related row on a map layer feature (e.g. shop → rent). */
+const linkFeatureRelatedSchema = z.object({
+	/** Layer feature id (`rents:…`). */
+	featureId: z.string().default(''),
+	/** Existing related id, or empty to clear (ignored when createName set). */
+	relatedId: z.string().default(''),
+	/** Non-empty → create a new related row with this display name. */
+	createName: z.string().default('')
+});
 
 /** Parse a Point GeoJSON string → `{ x, y }`, or null when invalid. */
 function parsePointGeoJson(raw: string): { x: number; y: number } | null {
@@ -556,6 +569,55 @@ export const actions: Actions = {
 	},
 
 	/**
+	 * Link / clear / create the inverse-related row for a layer feature
+	 * (`map.layers.<table>.related`, e.g. shops.area → rents).
+	 * Form: featureId, relatedId (optional), createName (optional).
+	 */
+	linkFeatureRelated: async ({ request, locals, fetch }) => {
+		const form = Object.fromEntries((await request.formData()).entries()) as Record<
+			string,
+			string
+		>;
+		const parsed = linkFeatureRelatedSchema.safeParse(form);
+		if (!parsed.success) {
+			return fail(400, { code: 'invalid_form', message: 'Invalid form data' });
+		}
+		const featureId = parsed.data.featureId.trim();
+		if (!featureId) {
+			return fail(400, { code: 'invalid_form', message: 'featureId is required' });
+		}
+
+		try {
+			if (!locals.session?.isConnected) {
+				throw new MutateError(503, 'db_unavailable', 'Database unavailable');
+			}
+			const [config, roles] = await Promise.all([
+				resolveAppConfig(locals.session),
+				getUserRoles(locals.selection.namespace, locals.user, fetch)
+			]);
+			assertCanEdit(roles);
+
+			const layerTable = tableOfId(featureId);
+			if (!layerTable || !isValidTableName(layerTable)) {
+				throw new MutateError(400, 'invalid_id', 'Invalid feature id');
+			}
+			const onMap = config.map.layers.some((layer) => layer.table === layerTable);
+			if (!onMap) {
+				throw new MutateError(403, 'readonly_table', `Table '${layerTable}' is not a map layer`);
+			}
+
+			const result = await linkRelatedToFeature(locals.session, config, layerTable, {
+				featureId,
+				relatedId: parsed.data.relatedId,
+				createName: parsed.data.createName
+			});
+			return { ok: true as const, relatedId: result.relatedId };
+		} catch (err) {
+			return failFromError(err);
+		}
+	},
+
+	/**
 	 * Delete a `markers` record from the properties panel. Its `marker_views`
 	 * rows are left untouched (dangling back-references remain).
 	 */
@@ -723,6 +785,15 @@ export const load: PageServerLoad = async ({ parent, locals, url }): Promise<Map
 		} catch (err) {
 			const message = err instanceof Error ? err.message : 'Failed to load embedding status';
 			console.warn('[map] marker embedding status failed:', message);
+		}
+
+		// Prefer related labels (e.g. shop name on rents). Vacant units keep rent name.
+		try {
+			const relatedLabels = await loadMapRelatedLabels(session, config);
+			if (relatedLabels.size > 0) applyRelatedLabels(model, relatedLabels);
+		} catch (err) {
+			const message = err instanceof Error ? err.message : 'Failed to load related labels';
+			console.warn('[map] related labels failed:', message);
 		}
 
 		const view = withoutLayerTables(slimView(model), excludedLayerTables);

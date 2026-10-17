@@ -48,6 +48,12 @@
 		onAddView?: () => void | Promise<void>;
 		onDelete?: () => void | Promise<void>;
 		onSaveView?: (payload: { id: string; values: Record<string, string> }) => void | Promise<void>;
+		/** Assign / clear / create inverse-related row (e.g. shop on rent). */
+		onLinkRelated?: (payload: {
+			featureId: string;
+			relatedId?: string;
+			createName?: string;
+		}) => void | Promise<void>;
 	};
 
 	let {
@@ -59,7 +65,8 @@
 		onSave,
 		onAddView,
 		onDelete,
-		onSaveView
+		onSaveView,
+		onLinkRelated
 	}: Props = $props();
 
 	let editing = $state(false);
@@ -70,6 +77,13 @@
 	let imagePreviewOpen = $state(false);
 	let imagePreviewSrc = $state<string | null>(null);
 	let imagePreviewTitle = $state<string | null>(null);
+
+	/** related link editor (shop ↔ rent): pick existing vs create new */
+	let relatedEditing = $state(false);
+	let relatedMode = $state<'existing' | 'create'>('existing');
+	let relatedPickId = $state('');
+	let relatedCreateName = $state('');
+	let relatedError = $state<string | null>(null);
 
 	// Close the preview whenever the panel itself is dismissed.
 	$effect(() => {
@@ -209,6 +223,67 @@
 			// page invalidate still refreshes map chrome
 		}
 	}
+
+	const related = $derived(detail?.related ?? null);
+	const canEditRelated = $derived(Boolean(canEdit && related?.canLink && onLinkRelated));
+
+	function startRelatedEdit() {
+		if (!related || !canEditRelated) return;
+		relatedEditing = true;
+		relatedError = null;
+		relatedPickId = related.id ?? '';
+		relatedCreateName = '';
+		relatedMode = related.canCreate && related.options.length === 0 ? 'create' : 'existing';
+	}
+
+	function cancelRelatedEdit() {
+		relatedEditing = false;
+		relatedError = null;
+		relatedPickId = related?.id ?? '';
+		relatedCreateName = '';
+	}
+
+	async function saveRelatedLink() {
+		if (!detail || !related || !canEditRelated || submitting) return;
+		relatedError = null;
+
+		if (relatedMode === 'create') {
+			if (!related.canCreate) {
+				relatedError = 'Cannot create on this table';
+				return;
+			}
+			const name = relatedCreateName.trim();
+			if (!name) {
+				relatedError = 'Name is required';
+				return;
+			}
+			await onLinkRelated?.({ featureId: detail.id, createName: name });
+		} else {
+			await onLinkRelated?.({
+				featureId: detail.id,
+				relatedId: relatedPickId.trim()
+			});
+		}
+
+		relatedEditing = false;
+		try {
+			await detailQuery?.refresh();
+		} catch {
+			// page invalidate still refreshes map chrome
+		}
+	}
+
+	async function clearRelatedLink() {
+		if (!detail || !related || !canEditRelated || submitting) return;
+		relatedError = null;
+		await onLinkRelated?.({ featureId: detail.id, relatedId: '' });
+		relatedEditing = false;
+		try {
+			await detailQuery?.refresh();
+		} catch {
+			// ignore
+		}
+	}
 </script>
 
 {#if recordId}
@@ -342,9 +417,139 @@
 								</dd>
 							</div>
 						{:else}
-							<p class="text-[11px] text-muted-foreground">No properties on this record.</p>
+							{#if !related}
+								<p class="text-[11px] text-muted-foreground">No properties on this record.</p>
+							{/if}
 						{/each}
 					</dl>
+
+					{#if related}
+						<div class="mt-2 border-t border-border pt-1.5">
+							<div class="mb-1 flex items-center justify-between gap-1">
+								<p class="text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
+									{related.tableLabel}
+								</p>
+								{#if canEditRelated && !relatedEditing && !editing}
+									<Button
+										type="button"
+										variant="ghost"
+										size="icon"
+										class="size-5"
+										title={`Edit ${related.tableLabel}`}
+										aria-label={`Edit ${related.tableLabel}`}
+										disabled={submitting}
+										onclick={startRelatedEdit}
+									>
+										<PencilIcon class="size-3" />
+									</Button>
+								{/if}
+							</div>
+
+							{#if relatedEditing && canEditRelated}
+								<div class="flex flex-col gap-1.5">
+									{#if related.canCreate}
+										<div class="flex gap-1">
+											<Button
+												type="button"
+												variant={relatedMode === 'existing' ? 'default' : 'outline'}
+												size="sm"
+												class="h-6 flex-1 px-1 text-[10px]"
+												disabled={submitting}
+												onclick={() => (relatedMode = 'existing')}>Existing</Button
+											>
+											<Button
+												type="button"
+												variant={relatedMode === 'create' ? 'default' : 'outline'}
+												size="sm"
+												class="h-6 flex-1 px-1 text-[10px]"
+												disabled={submitting}
+												onclick={() => (relatedMode = 'create')}>New</Button
+											>
+										</div>
+									{/if}
+
+									{#if relatedMode === 'create' && related.canCreate}
+										<Field.Field class="gap-1">
+											<Field.Label for="map-related-name" class="text-[11px]">Name</Field.Label>
+											<FormFieldControl
+												id="map-related-name"
+												type="text"
+												valueType="string"
+												value={relatedCreateName}
+												disabled={submitting}
+												onValueChange={(next) => {
+													relatedCreateName = next;
+													relatedError = null;
+												}}
+											/>
+										</Field.Field>
+									{:else}
+										<Field.Field class="gap-1">
+											<Field.Label for="map-related-pick" class="text-[11px]"
+												>Select {related.tableLabel}</Field.Label
+											>
+											<FormFieldControl
+												id="map-related-pick"
+												type="combo"
+												valueType="record"
+												value={relatedPickId}
+												options={related.options}
+												disabled={submitting}
+												onValueChange={(next) => {
+													relatedPickId = next;
+													relatedError = null;
+												}}
+											/>
+										</Field.Field>
+									{/if}
+
+									{#if relatedError}
+										<p class="text-[11px] text-destructive">{relatedError}</p>
+									{/if}
+
+									<div class="flex flex-wrap items-center justify-end gap-1">
+										{#if related.id}
+											<Button
+												type="button"
+												variant="ghost"
+												size="sm"
+												class="mr-auto h-7 px-2 text-xs text-muted-foreground"
+												disabled={submitting}
+												onclick={clearRelatedLink}>Clear</Button
+											>
+										{/if}
+										<Button
+											type="button"
+											variant="outline"
+											size="sm"
+											class="h-7 px-2 text-xs"
+											disabled={submitting}
+											onclick={cancelRelatedEdit}>Cancel</Button
+										>
+										<Button
+											type="button"
+											size="sm"
+											class="h-7 px-2 text-xs"
+											disabled={submitting}
+											onclick={saveRelatedLink}
+										>
+											{#if submitting}
+												<Spinner class="size-3" data-icon="inline-start" />
+											{/if}
+											Save
+										</Button>
+									</div>
+								</div>
+							{:else}
+								<p class="truncate text-xs" title={related.title ?? undefined}>
+									{related.title?.trim() ? related.title : 'Vacant'}
+								</p>
+								{#if related.id}
+									<p class="truncate font-mono text-[10px] text-muted-foreground">{related.id}</p>
+								{/if}
+							{/if}
+						</div>
+					{/if}
 				{/if}
 			</div>
 

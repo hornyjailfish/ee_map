@@ -335,6 +335,33 @@ export function applyStyleVariants(
 	}
 }
 
+/**
+ * Prefer related-row labels (e.g. shop name on a rent polygon) when present.
+ * Features without a related label keep the layer row's own label (vacant unit).
+ * Mutates `view` in place — same pattern as {@link applyStyleVariants}.
+ */
+export function applyRelatedLabels(
+	view: MapViewModel,
+	labelByFeatureId: ReadonlyMap<string, string> | Record<string, string>
+): void {
+	const lookup = (id: string): string | undefined =>
+		labelByFeatureId instanceof Map
+			? labelByFeatureId.get(id)
+			: (labelByFeatureId as Record<string, string>)[id];
+	for (const layer of view.layers) {
+		for (const feature of layer.features) {
+			const related = lookup(feature.id);
+			if (related && related.trim()) {
+				feature.label = related.trim();
+				// Keep unit code available for tooling; map chrome uses `label`.
+				if (feature.properties && typeof feature.properties === 'object') {
+					feature.properties = { ...feature.properties, relatedLabel: related.trim() };
+				}
+			}
+		}
+	}
+}
+
 function levelFromRow(value: unknown): string | null {
 	if (value == null || value === '') return null;
 	const id = normalizeRecordId(value);

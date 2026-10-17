@@ -1,7 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import { DEFAULT_GRAPH_LAYOUT } from '$lib/config/merge';
 import type { ResolvedConfig, ResolvedEntity, ResolvedMapLayer } from '$lib/config/types';
-import { geometryBBox, geometryKey, normalizeGeometry, toMap } from './to-map';
+import {
+	applyRelatedLabels,
+	geometryBBox,
+	geometryKey,
+	normalizeGeometry,
+	toMap
+} from './to-map';
 
 function field(name: string, type = 'string') {
 	return {
@@ -476,5 +482,37 @@ describe('toMap', () => {
 			x: 450.25,
 			y: -12.5
 		});
+	});
+});
+
+describe('applyRelatedLabels', () => {
+	it('prefers related label and leaves vacant units on row label', () => {
+		const vm = toMap({
+			config: config({
+				map: { layers: [layer({ table: 'rents', styleKey: 'rents' })] }
+			}),
+			entities: {
+				rents: [
+					{
+						id: 'rents:t1',
+						name: 'A71',
+						level: 'levels:1',
+						geometry: polyGeom
+					},
+					{
+						id: 'rents:t2',
+						name: 'B2',
+						level: 'levels:1',
+						geometry: polyGeom
+					}
+				]
+			}
+		});
+
+		applyRelatedLabels(vm, new Map([['rents:t1', 'Tezenis']]));
+
+		const feats = vm.layers[0].features;
+		expect(feats.find((f) => f.id === 'rents:t1')?.label).toBe('Tezenis');
+		expect(feats.find((f) => f.id === 'rents:t2')?.label).toBe('B2');
 	});
 });

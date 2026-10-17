@@ -44,4 +44,27 @@ export type MapFeatureRecordDetail = {
 	 * Populated for the map properties overlay; empty/absent for other records.
 	 */
 	markerViews?: MapFeatureRecordDetail[];
+	/**
+	 * Inverse-link display identity from `map.layers.<table>.related`
+	 * (e.g. shops.area → rents). 1:1 brand/tenant on a geometry feature.
+	 */
+	related?: MapFeatureRelatedLink;
+};
+
+/** One inverse-related row for the map feature panel (assignable). */
+export type MapFeatureRelatedLink = {
+	table: string;
+	tableLabel: string;
+	/** FK field on the related table (e.g. `area`). */
+	via: string;
+	/** Currently linked related id, or null when vacant. */
+	id: string | null;
+	/** Related display name, or null when vacant. */
+	title: string | null;
+	/** EDITOR may pick/clear an existing related row. */
+	canLink: boolean;
+	/** EDITOR may create a new related row pointed at this feature. */
+	canCreate: boolean;
+	/** Picker options (related table rows). */
+	options: SelectOption[];
 };

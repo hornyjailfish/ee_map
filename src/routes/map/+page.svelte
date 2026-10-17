@@ -747,6 +747,32 @@
 		}
 	}
 
+	async function linkFeatureRelated(payload: {
+		featureId: string;
+		relatedId?: string;
+		createName?: string;
+	}) {
+		if (!roleCanEdit || propsSubmitting) return;
+		try {
+			propsSubmitting = true;
+			propsError = null;
+			writeError = null;
+			const body: Record<string, string> = { featureId: payload.featureId };
+			if (payload.createName != null && payload.createName.trim()) {
+				body.createName = payload.createName.trim();
+			} else {
+				body.relatedId = payload.relatedId?.trim() ?? '';
+			}
+			await postFormAction('linkFeatureRelated', body);
+			await invalidateAll();
+		} catch (err) {
+			propsError = formatWriteError(err, 'Failed to update linked record');
+			throw err;
+		} finally {
+			propsSubmitting = false;
+		}
+	}
+
 	// Dialog cancel / dismiss discards the pending sketch
 	$effect(() => {
 		if (!createOpen && !markerOpen && draftGeo && !createSubmitting && !markerSubmitting) {
@@ -1015,6 +1041,7 @@
 							onAddView={openAddView}
 							onDelete={deleteMarker}
 							onSaveView={saveMarkerViewUpdate}
+							onLinkRelated={linkFeatureRelated}
 						/>
 					{/key}
 				</svelte:boundary>

@@ -13,8 +13,11 @@ import {
 	isValidTableName,
 	loadRecordLabels,
 	loadRecordOptions,
+	loadRelatedTableOptions,
 	MutateError,
 	queryRecordById,
+	queryRelatedForTarget,
+	relatedForLayerTable,
 	tableOfId,
 	type RecordOption
 } from '$lib/server/data';
@@ -266,6 +269,46 @@ export const getMapFeatureRecord = query(
 
 		if (entity.name === 'markers') {
 			detail.markerViews = await loadMarkerViews(locals.session, config, normalizedId, roleCanEdit);
+		}
+
+		const relatedSpec = relatedForLayerTable(config, entity.name);
+		if (relatedSpec) {
+			const relatedEntity = entityByName(config, relatedSpec.table);
+			const linked = await queryRelatedForTarget(locals.session, relatedSpec, normalizedId);
+
+			let relatedOptions: RecordOption[] = [];
+			const canUpdateRelated = Boolean(relatedEntity?.permissions.update);
+			const canCreateRelated = Boolean(relatedEntity?.permissions.create);
+			const canLink = roleCanEdit && (canUpdateRelated || canCreateRelated);
+
+			if (canLink && relatedEntity) {
+				try {
+					relatedOptions = await loadRelatedTableOptions(
+						locals.session,
+						config,
+						relatedEntity
+					);
+				} catch (err) {
+					const message = err instanceof Error ? err.message : 'related options failed';
+					console.warn(`[map] related options ${relatedSpec.table}:`, message);
+				}
+			}
+
+			detail.related = {
+				table: relatedSpec.table,
+				tableLabel: relatedEntity?.label ?? relatedSpec.table,
+				via: relatedSpec.via,
+				id: linked?.id ?? null,
+				title: linked?.label || null,
+				canLink,
+				canCreate: roleCanEdit && canCreateRelated,
+				options: relatedOptions
+			};
+
+			// Prefer related name as the panel title (vacant → layer row name).
+			if (linked?.label) {
+				detail.title = linked.label;
+			}
 		}
 
 		return detail;
