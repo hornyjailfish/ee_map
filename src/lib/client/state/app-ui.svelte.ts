@@ -1,6 +1,7 @@
 /**
- * Shared client UI state across Table / Graph / Map views.
- * focusedId is the canonical “current record”; selectedIds is multi-select (v1 mostly single).
+ * Shared client UI state (reserved).
+ * Cross-view selection sync is intentionally disabled — each view keeps local focus.
+ * Reintroduce explicit “open in …” actions here later if needed.
  */
 
 export type SearchScope = 'view' | 'all';

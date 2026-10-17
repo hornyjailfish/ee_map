@@ -21,7 +21,6 @@
 	import { applyNodeSelection } from '$lib/client/selection';
 	import { nodeTypes } from '$lib/client/registries/nodes';
 	import { edgeTypes } from '$lib/client/registries/edges';
-	import { appUi } from '$lib/client/state/app-ui.svelte';
 	import type { EditorOption } from '$lib/client/editors';
 	import * as Alert from '$lib/components/ui/alert/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
@@ -88,10 +87,13 @@
 		});
 	}
 
+	/** Selection is local to this graph mount — not shared across table/map. */
+	let focusedId = $state<string | null>(null);
+
 	// Mount-time only — parent `{#key structureKey}` remounts on node/layout change (not wires).
 	// svelte-ignore state_referenced_locally (intentional: capture initial measure snapshot)
 	let nodes = $state.raw<GraphNode[]>(
-		applyNodeUiFlags(applyNodeSelection(toMeasureNodes(graph, { canEdit, crud }), appUi.focusedId))
+		applyNodeUiFlags(applyNodeSelection(toMeasureNodes(graph, { canEdit, crud }), focusedId))
 	);
 	// svelte-ignore state_referenced_locally (intentional: capture initial measure snapshot)
 	let edges = $state.raw<GraphEdge[]>(toFlowEdges(graph));
@@ -197,7 +199,7 @@
 			});
 			addOpen = false;
 			await invalidateAll();
-			if (result.id) appUi.focusRecord(result.id);
+			if (result.id) focusedId = result.id;
 		} catch (err) {
 			addError = formatWriteError(err, 'Failed to create node');
 		} finally {
@@ -245,7 +247,7 @@
 			writePending = true;
 			writeError = null;
 			await postFormAction('deleteNode', { table: node.table, id: node.id });
-			if (appUi.focusedId === node.id) appUi.focusRecord(null);
+			if (focusedId === node.id) focusedId = null;
 			await invalidateAll();
 		} catch (err) {
 			writeError = formatWriteError(err, 'Failed to delete node');
@@ -259,7 +261,7 @@
 	}
 
 	function onLayoutDone(result: { nodes: GraphNode[]; edges?: GraphEdge[] }) {
-		nodes = applyNodeUiFlags(applyNodeSelection(result.nodes, appUi.focusedId));
+		nodes = applyNodeUiFlags(applyNodeSelection(result.nodes, focusedId));
 		if (result.edges) {
 			const stillPending = edges.filter((e) => e.id.startsWith('tmp:'));
 			edges = stillPending.length ? [...result.edges, ...stillPending] : result.edges;
@@ -277,7 +279,7 @@
 
 	function onLayoutError(message: string, fallback: { nodes: GraphNode[]; edges?: GraphEdge[] }) {
 		layoutError = message;
-		nodes = applyNodeUiFlags(applyNodeSelection(fallback.nodes, appUi.focusedId));
+		nodes = applyNodeUiFlags(applyNodeSelection(fallback.nodes, focusedId));
 		if (fallback.edges) edges = fallback.edges;
 		phase = 'ready';
 	}
@@ -289,11 +291,11 @@
 	}
 
 	function onnodeclick({ node }: { node: GraphNode }) {
-		appUi.focusRecord(node.id);
+		focusedId = node.id;
 	}
 
 	$effect(() => {
-		const focused = appUi.focusedId;
+		const focused = focusedId;
 		nodes = applyNodeSelection(nodes, focused);
 	});
 
@@ -615,9 +617,8 @@
 		{onnodeclick}
 		selectionOnDrag
 		panOnDrag={[1]}
-		onselectionchange={({ nodes, edges }) => {
-			if (nodes.length == 0) appUi.clearSelection();
-			if (nodes.length > 0) appUi.setSelected(nodes.map((n) => n.id));
+		onselectionchange={({ nodes }) => {
+			focusedId = nodes.length > 0 ? nodes[nodes.length - 1]!.id : null;
 		}}
 		selectNodesOnDrag={true}
 		{onbeforeconnect}

@@ -164,13 +164,32 @@ function slimView(view: MapViewModel): MapViewModel {
 	};
 }
 
+/**
+ * Annotation layer tables hidden from VIEWER (EDITOR/OWNER only).
+ * Zones are editor scaffolding, not end-user map content.
+ */
+const EDITOR_ONLY_LAYER_TABLES = new Set(['zones']);
+
 /** Tables appearing in enabled map layers (unique, allowlisted). */
-function layerTables(config: ResolvedConfig): string[] {
+function layerTables(
+	config: ResolvedConfig,
+	exclude: ReadonlySet<string> = new Set()
+): string[] {
 	const names = new Set<string>();
 	for (const layer of config.map.layers) {
+		if (exclude.has(layer.table)) continue;
 		if (isValidTableName(layer.table)) names.add(layer.table);
 	}
 	return [...names];
+}
+
+/** Drop editor-only layers from a built view (defense in depth after toMap). */
+function withoutLayerTables(view: MapViewModel, exclude: ReadonlySet<string>): MapViewModel {
+	if (exclude.size === 0) return view;
+	return {
+		...view,
+		layers: view.layers.filter((layer) => !exclude.has(layer.table))
+	};
 }
 
 /** Sentinel `?level=` value for "all levels" (vs. an absent param = default floor). */
@@ -646,7 +665,9 @@ export const load: PageServerLoad = async ({ parent, locals, url }): Promise<Map
 	}
 
 	const session = locals.session;
-	const tables = layerTables(config);
+	// VIEWER: do not query zones (and any other editor-only annotation layers).
+	const excludedLayerTables = roleCanEdit ? new Set<string>() : EDITOR_ONLY_LAYER_TABLES;
+	const tables = layerTables(config, excludedLayerTables);
 	const levelsTable = config.map.levelsTable;
 	// Floor-plan `levels` is drawable only for OWNER; hide it from EDITOR's tool list.
 	let crud = roleCanEdit ? buildMapCrudMeta(config) : null;
@@ -704,7 +725,7 @@ export const load: PageServerLoad = async ({ parent, locals, url }): Promise<Map
 			console.warn('[map] marker embedding status failed:', message);
 		}
 
-		const view = slimView(model);
+		const view = withoutLayerTables(slimView(model), excludedLayerTables);
 
 		let recordOptionsByTable: Record<string, Record<string, RecordOption[]>> = {};
 		if (crud && crud.drawTargets.some((t) => t.canCreate)) {

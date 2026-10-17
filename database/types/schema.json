@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-10-13T06:57:06.8141237Z",
+  "generatedAt": "2026-10-17T00:15:55.7965643Z",
   "namespace": "main",
   "database": "main",
   "tables": [
@@ -869,16 +869,16 @@
         },
         {
           "name": "image_url",
-          "define": "DEFINE FIELD image_url ON marker_views TYPE string | none PERMISSIONS FULL",
+          "define": "DEFINE FIELD image_url ON marker_views TYPE file | none PERMISSIONS FULL",
           "type": {
-            "kind": "primitive",
-            "name": "string"
+            "kind": "unknown",
+            "source": "file"
           },
           "optional": true,
           "flexible": false,
           "readonly": false,
           "hasDefault": false,
-          "rawType": "string | none"
+          "rawType": "file | none"
         },
         {
           "name": "marker",

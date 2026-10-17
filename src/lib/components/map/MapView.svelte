@@ -23,7 +23,6 @@
 	import { all as loadAll } from 'ol/loadingstrategy';
 	import { defaults as defaultInteractions } from 'ol/interaction/defaults';
 	import type { Type as GeometryType } from 'ol/geom/Geometry';
-	import { appUi } from '$lib/client/state/app-ui.svelte';
 	import {
 		normalizedToOl,
 		olToWritableGeoJSON,
@@ -61,6 +60,10 @@
 		draftStyleKey?: string;
 		/** Freeze vertex/edge drag while a geometry save is in flight / failed. */
 		modifyLocked?: boolean;
+		/** Local focus for this map mount (not shared across views). */
+		focusedId?: string | null;
+		/** Selection changed by map click (null = clear). */
+		onFocus?: (id: string | null) => void;
 		/** Fired when a draw tool completes a writable Point/Polygon. */
 		onDrawEnd?: (geometry: WritableGeoJSON) => void;
 		/** Fired when a vertex or edge edit finishes on the focused feature. */
@@ -82,6 +85,8 @@
 		draftGeometry = null,
 		draftStyleKey = 'draw-draft',
 		modifyLocked = false,
+		focusedId = null,
+		onFocus,
 		onDrawEnd,
 		onModifyEnd,
 		onSplitEnd,
@@ -224,17 +229,17 @@
 			);
 			if (hit) {
 				const id = hit.getId();
-				appUi.focusRecord(id != null ? String(id) : null);
+				onFocus?.(id != null ? String(id) : null);
 			} else if (!editMode) {
 				// Navigate: click empty map clears selection.
 				// Edit/extrude/split: miss keeps the feature under edit selected.
-				appUi.focusRecord(null);
+				onFocus?.(null);
 			}
 		});
 
 		let lastExtentKey = initialExtent.join(',');
 		/** Mutable so OL style fn can read focus without subscribing the layer $effect. */
-		const focusBox: { id: string | null } = { id: untrack(() => appUi.focusedId) };
+		const focusBox: { id: string | null } = { id: untrack(() => focusedId) };
 		/** Mutable edit-mode flags for style fn + click gate (no effect churn). */
 		const toolBox: { mode: MapToolMode; modifyLocked: boolean } = {
 			mode: untrack(() => tool),
@@ -393,7 +398,7 @@
 
 		// Focus highlight only — do not rebuild geometry or reset view
 		$effect(() => {
-			focusBox.id = appUi.focusedId;
+			focusBox.id = focusedId;
 			for (const layer of map.getLayers().getArray()) {
 				if (layer === draftLayer) continue;
 				const role = layer.get('role');
@@ -478,7 +483,7 @@
 		$effect(() => {
 			const mode = tool;
 			const edit = canEdit;
-			const focusedId = appUi.focusedId;
+			const id = focusedId;
 			// Re-run after layer rebuild so features are findable again
 			void view;
 
@@ -508,13 +513,13 @@
 			modifyBox.session = session;
 
 			const bindFocused = () => {
-				const feature = focusedId ? findMapFeatureById(map, focusedId) : null;
+				const feature = id ? findMapFeatureById(map, id) : null;
 				session.setFeature(feature);
 				element.style.cursor = feature && !toolBox.modifyLocked ? 'grab' : '';
 			};
 			bindFocused();
 
-			// VectorSource loaders are async — rebind when features appear (e.g. focus from graph).
+			// VectorSource loaders are async — rebind when features appear after layer load.
 			const sources = [...collectMapVectorSources(map, [draftSource])];
 			for (const source of sources) {
 				source.on('addfeature', bindFocused);
@@ -540,7 +545,7 @@
 		$effect(() => {
 			const mode = tool;
 			const edit = canEdit;
-			const focusedId = appUi.focusedId;
+			const id = focusedId;
 			void view;
 
 			disposeExtrudeSession();
@@ -569,7 +574,7 @@
 			extrudeBox.session = session;
 
 			const bindFocused = () => {
-				const feature = focusedId ? findMapFeatureById(map, focusedId) : null;
+				const feature = id ? findMapFeatureById(map, id) : null;
 				const poly =
 					feature && feature.getGeometry()?.getType() === 'Polygon' ? feature : null;
 				session.setFeature(poly);
@@ -603,7 +608,7 @@
 		$effect(() => {
 			const mode = tool;
 			const edit = canEdit;
-			const focusedId = appUi.focusedId;
+			const id = focusedId;
 			void view;
 
 			disposeSplitSession();
@@ -631,7 +636,7 @@
 			splitBox.session = session;
 
 			const bindFocused = () => {
-				const feature = focusedId ? findMapFeatureById(map, focusedId) : null;
+				const feature = id ? findMapFeatureById(map, id) : null;
 				const poly =
 					feature && feature.getGeometry()?.getType() === 'Polygon' ? feature : null;
 				session.setFeature(poly);

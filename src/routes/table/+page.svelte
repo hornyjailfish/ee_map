@@ -20,8 +20,6 @@
 	// Client-only: wire SVAR inline + form editor components once.
 	ensureEditorsRegistered();
 	import { ApiError, postFormAction } from '$lib/client/http';
-	import { tableOfRecordId } from '$lib/client/selection';
-	import { appUi } from '$lib/client/state/app-ui.svelte';
 	import { columnSortFn } from '$lib/transform/compare';
 	import type { TableColumn, TableRow, TableViewModel } from '$lib/transform/to-table';
 	import {
@@ -35,7 +33,6 @@
 	import PlusIcon from '@lucide/svelte/icons/plus';
 	import TrashIcon from '@lucide/svelte/icons/trash-2';
 	import type { PageData } from './$types';
-	import { untrack } from 'svelte';
 	import { canEdit } from '$lib/roles';
 
 	let { data }: { data: PageData } = $props();
@@ -98,16 +95,8 @@
 
 	const pendingTable = $derived(navigating.to?.url.searchParams.get('table') ?? null);
 
-	/** Imperative SVAR handle for select/scroll from shared focus. */
+	/** Imperative SVAR handle for select/scroll after local create. */
 	let gridApi = $state<IApi | null>(null);
-	/** Suppress feedback when we programmatically select from appUi. */
-	let applyingExternalSelection = false;
-	/**
-	 * Last focusedId we already considered for table-follow.
-	 * Only navigate on *focus changes* (graph/map selection) — never snap back
-	 * when the user picks another entity in the switcher while focus is stale.
-	 */
-	let lastFollowedFocusId: string | null | undefined = undefined;
 
 	function toSvarColumns(cols: TableColumn[], editable: boolean): IColumnConfig[] {
 		return cols.map((c) => {
@@ -148,17 +137,9 @@
 		return opts && opts.length > 0 ? opts : null;
 	}
 
-	function switchTable(next: string, opts?: { clearForeignFocus?: boolean }) {
+	function switchTable(next: string) {
 		if (!next || next === activeTable || tableLoading) return;
-		// Manual switcher: drop focus that belongs to another entity so we don't
-		// keep a stale cross-table selection (and so focus-follow won't fight later).
-		if (opts?.clearForeignFocus) {
-			const focusTable = tableOfRecordId(appUi.focusedId);
-			if (focusTable != null && focusTable !== next) {
-				appUi.focusRecord(null);
-				lastFollowedFocusId = null;
-			}
-		}
+		selectedRows = [];
 		const href = resolve('/table');
 		const params = new URLSearchParams(page.url.searchParams);
 		params.set('table', next);
@@ -167,7 +148,7 @@
 
 	function onTableChange(event: Event) {
 		const select = event.currentTarget as HTMLSelectElement;
-		switchTable(select.value, { clearForeignFocus: true });
+		switchTable(select.value);
 	}
 
 	let last_edit = $state(null);
@@ -177,7 +158,6 @@
 			last_edit = api.getRow(ev.id)[ev.column]
 		})
 		applyDefaultSortMarks(api, view?.sort);
-		applyFocusToGrid(api, appUi.focusedId);
 	}
 
 	/**
@@ -197,31 +177,17 @@
 		}
 	}
 
-	function applyFocusToGrid(api: IApi, focusedId: string | null) {
-		if (!focusedId) return;
-		const row = api.getRow(focusedId);
+	function selectRowInGrid(api: IApi, id: string) {
+		const row = api.getRow(id);
 		if (!row) return;
-
-		const selected = api.getState().selectedRows ?? [];
-		if (selected.length === 1 && selected[0] === focusedId) return;
-
-		applyingExternalSelection = true;
-		try {
-			api.exec('select-row', { id: focusedId, show: true });
-			api.exec('scroll', { row: focusedId });
-		} finally {
-			// SVAR may fire select-row sync; clear on next microtask if still set
-			queueMicrotask(() => {
-				applyingExternalSelection = false;
-			});
-		}
+		api.exec('select-row', { id, show: true });
+		api.exec('scroll', { row: id });
 	}
-	/** Grid maps `select-row` → `onselectrow`. */
+
+	/** Grid maps `select-row` → `onselectrow`. Local selection only. */
 	function onselectrow(ev: TMethodsConfig['select-row']) {
-		if (applyingExternalSelection) return;
 		const id = ev?.id != null ? String(ev.id) : null;
 		if (!id) return;
-		appUi.focusRecord(id);
 		selectedRows = [id];
 	}
 
@@ -282,7 +248,11 @@
 			});
 			await invalidateAll();
 			addOpen = false;
-			if (result.id) appUi.focusRecord(result.id);
+			if (result.id) {
+				selectedRows = [result.id];
+				const api = gridApi;
+				if (api) selectRowInGrid(api, result.id);
+			}
 		} catch (err) {
 			addError = formatWriteError(err, 'Failed to add row');
 		} finally {
@@ -307,36 +277,6 @@
 			writePending = false;
 		}
 	}
-
-	// Follow shared focus into another entity table (graph/map click → table view).
-	// Only react to focusedId changes. Reading activeTable/tables via untrack so a
-	// manual entity-switcher change cannot re-fire this and goto back to the stale focus table.
-	$effect(() => {
-		const focusedId = appUi.focusedId;
-		if (focusedId === lastFollowedFocusId) return;
-		lastFollowedFocusId = focusedId;
-
-		const table = tableOfRecordId(focusedId);
-		if (!table) return;
-
-		const { current, known } = untrack(() => ({
-			current: activeTable,
-			known: tables.some((t) => t.name === table)
-		}));
-		if (!known || !current || table === current) return;
-		switchTable(table);
-	});
-
-	// After rows load / focus changes, select + scroll the matching row.
-	$effect(() => {
-		const api = gridApi;
-		const focusedId = appUi.focusedId;
-		// Depend on view identity so switch completes before select
-		const _view = view;
-		void _view;
-		if (!api || tableLoading) return;
-		applyFocusToGrid(api, focusedId);
-	});
 
 	function rowCountLabel(v: TableViewModel | null): string {
 		if (!v) return '';

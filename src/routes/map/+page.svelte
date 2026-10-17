@@ -25,7 +25,6 @@
 	} from '$lib/client/map';
 	import type OlMap from 'ol/Map';
 	import type { EditorOption } from '$lib/client/editors';
-	import { appUi } from '$lib/client/state/app-ui.svelte';
 	import type { AppRole } from '$lib/catalog-types';
 	import { canEdit } from '$lib/roles';
 	import type { MapFeature, NormalizedGeometry } from '$lib/transform/to-map';
@@ -67,28 +66,8 @@
 		return raw && raw.length > 0 ? raw : null;
 	});
 
-	// Keep shared UI level in sync with URL-driven server filter
-	$effect(() => {
-		appUi.setLevel(levelId);
-	});
-
-	// Drop stale property save errors when selection changes
-	$effect(() => {
-		void appUi.focusedId;
-		propsError = null;
-	});
-
-	/** Feature id → levelId from current payload (may be incomplete while loading). */
-	const featureLevelById = $derived.by(() => {
-		const map = new Map<string, string | null>();
-		if (!view) return map;
-		for (const layer of view.layers) {
-			for (const f of layer.features) {
-				map.set(f.id, f.levelId);
-			}
-		}
-		return map;
-	});
+	/** Selection is local to this map mount — not shared across table/graph. */
+	let focusedId = $state<string | null>(null);
 
 	// ── Create / edit tool state ─────────────────────────────────────
 	let tool = $state<MapToolMode>('navigate');
@@ -100,6 +79,12 @@
 	let writeError = $state<string | null>(null);
 	let propsSubmitting = $state(false);
 	let propsError = $state<string | null>(null);
+
+	// Drop stale property save errors when selection changes
+	$effect(() => {
+		void focusedId;
+		propsError = null;
+	});
 
 	// ── Marker (embedding search dataset) state ────────────────────────
 	let markerOpen = $state(false);
@@ -145,7 +130,7 @@
 	);
 
 	const focusedFeature = $derived.by((): MapFeature | null => {
-		const id = appUi.focusedId;
+		const id = focusedId;
 		if (!id || !view) return null;
 		for (const layer of view.layers) {
 			for (const f of layer.features) {
@@ -179,7 +164,7 @@
 
 	const modifyBlockedReason = $derived.by((): string | null => {
 		if (!roleCanEdit) return null;
-		if (!appUi.focusedId) return 'Select a feature, then Edit';
+		if (!focusedId) return 'Select a feature, then Edit';
 		if (!focusedFeature) return 'Selected record is not on this map';
 		const spec = crud?.byTable[focusedFeature.table];
 		if (!spec?.canUpdate) return 'Selected layer is read-only';
@@ -190,7 +175,7 @@
 
 	const extrudeBlockedReason = $derived.by((): string | null => {
 		if (!roleCanEdit) return null;
-		if (!appUi.focusedId) return 'Select a polygon, then Extrude';
+		if (!focusedId) return 'Select a polygon, then Extrude';
 		if (!focusedFeature) return 'Selected record is not on this map';
 		const spec = crud?.byTable[focusedFeature.table];
 		if (!spec?.canUpdate) return 'Selected layer is read-only';
@@ -201,7 +186,7 @@
 
 	const splitBlockedReason = $derived.by((): string | null => {
 		if (!roleCanEdit) return null;
-		if (!appUi.focusedId) return 'Select a polygon, then Split';
+		if (!focusedId) return 'Select a polygon, then Split';
 		if (!focusedFeature) return 'Selected record is not on this map';
 		const spec = crud?.byTable[focusedFeature.table];
 		if (!spec?.canUpdate) return 'Selected layer is read-only';
@@ -295,7 +280,9 @@
 	function selectLevel(next: string | null) {
 		if (next === levelId || levelLoading) return;
 
-		appUi.setLevel(next);
+		// Floor is URL-only; clear local selection so the panel doesn't show a
+		// feature that isn't on the newly loaded floor.
+		focusedId = null;
 
 		const href = resolve('/map');
 		const params = new URLSearchParams(page.url.searchParams);
@@ -308,19 +295,6 @@
 		const qs = params.toString();
 		void goto(qs ? `${href}?${qs}` : href, { keepFocus: true, noScroll: true });
 	}
-
-	// If focus lands on a feature present in the payload but on another level, switch to it.
-	// Do not clear the level filter for unknown ids (e.g. breakers from graph are not map layers).
-	$effect(() => {
-		const focusedId = appUi.focusedId;
-		if (!focusedId || levelLoading || !view) return;
-
-		const featureLevel = featureLevelById.get(focusedId);
-		if (featureLevel === undefined) return;
-		if (levelId != null && featureLevel != null && featureLevel !== levelId) {
-			selectLevel(featureLevel);
-		}
-	});
 
 	// Drop draw mode when the layer picker no longer yields a target (draw needs a
 	// selected layer, or a floor level for level-scoped targets) — safety net behind
@@ -477,7 +451,7 @@
 			draftGeo = null;
 			markerContext = null;
 			await invalidateAll();
-			if (result.id) appUi.focusRecord(result.id);
+			if (result.id) focusedId = result.id;
 			// Stay in marker mode to place more markers.
 		} catch (err) {
 			markerError = formatWriteError(err, 'Failed to save marker');
@@ -501,7 +475,7 @@
 
 			clearDraft();
 			await invalidateAll();
-			if (result.id) appUi.focusRecord(result.id);
+			if (result.id) focusedId = result.id;
 			// Stay in draw mode to fill more gaps quickly
 		} catch (err) {
 			createError =
@@ -536,7 +510,7 @@
 			clearDraft();
 			await invalidateAll();
 			const focusId = result.id ?? recordId;
-			if (focusId) appUi.focusRecord(focusId);
+			if (focusId) focusedId = focusId;
 		} catch (err) {
 			createError =
 				err instanceof ApiError
@@ -679,7 +653,7 @@
 			splitOpen = false;
 			pendingSplit = null;
 			await invalidateAll();
-			appUi.focusRecord(keepId);
+			focusedId = keepId;
 			void otherId;
 			// Stay on split tool for more cuts if still valid.
 		} catch (err) {
@@ -713,18 +687,18 @@
 	}
 
 	function openAddView() {
-		if (!roleCanEdit || !appUi.focusedId) return;
+		if (!roleCanEdit || !focusedId) return;
 		markerViewError = null;
 		markerViewOpen = true;
 	}
 
 	async function submitMarkerView(description: string, image: string | null) {
-		if (!roleCanEdit || !appUi.focusedId || markerViewSubmitting) return;
+		if (!roleCanEdit || !focusedId || markerViewSubmitting) return;
 		try {
 			markerViewSubmitting = true;
 			markerViewError = null;
 			await postFormAction('createMarkerView', {
-				marker: appUi.focusedId,
+				marker: focusedId,
 				description,
 				image
 			});
@@ -738,15 +712,15 @@
 	}
 
 	async function deleteMarker() {
-		if (!roleCanEdit || !appUi.focusedId || propsSubmitting) return;
-		const id = appUi.focusedId;
+		if (!roleCanEdit || !focusedId || propsSubmitting) return;
+		const id = focusedId;
 		if (!confirm(`Delete marker ${id}?`)) return;
 		try {
 			propsSubmitting = true;
 			propsError = null;
 			writeError = null;
 			await postFormAction('deleteMarker', { id });
-			appUi.focusRecord(null);
+			focusedId = null;
 			await invalidateAll();
 		} catch (err) {
 			propsError = formatWriteError(err, 'Failed to delete marker');
@@ -913,7 +887,7 @@
 		{#if levelLoading}
 			{#if browser && view}
 				<div class="pointer-events-none h-full w-full opacity-40" aria-hidden="true">
-					<MapView {view} />
+					<MapView {view} {focusedId} />
 				</div>
 			{/if}
 			<ViewLoadingOverlay label={loadingLabel()} />
@@ -950,6 +924,8 @@
 			<!-- OpenLayers is client-only (metric XY plane) -->
 			<MapView
 				{view}
+				{focusedId}
+				onFocus={(id) => (focusedId = id)}
 				canEdit={roleCanEdit && !createOpen && !createSubmitting && !splitOpen}
 				tool={createOpen || splitOpen ? 'navigate' : tool}
 				{draftGeometry}
@@ -985,7 +961,7 @@
 					</li>
 				</ul>
 			</aside>
-			{#if appUi.focusedId && !createOpen}
+			{#if focusedId && !createOpen}
 				<svelte:boundary>
 					{#snippet failed(error, reset)}
 						<aside
@@ -1008,7 +984,7 @@
 									size="sm"
 									class="h-7 px-2 text-xs"
 									variant="ghost"
-									onclick={() => appUi.focusRecord(null)}>Close</Button
+									onclick={() => (focusedId = null)}>Close</Button
 								>
 							</div>
 						</aside>
@@ -1025,15 +1001,15 @@
 							Loading…
 						</aside>
 					{/snippet}
-					{#key appUi.focusedId}
+					{#key focusedId}
 						<FeaturePropertiesPanel
-							recordId={appUi.focusedId}
+							recordId={focusedId}
 							canEdit={roleCanEdit}
 							submitting={propsSubmitting}
 							error={propsError}
 							onClose={() => {
 								propsError = null;
-								appUi.focusRecord(null);
+								focusedId = null;
 							}}
 							onSave={saveFeatureProperties}
 							onAddView={openAddView}
@@ -1103,7 +1079,7 @@
 	<MarkerModal
 		bind:open={markerViewOpen}
 		mode="view"
-		markerId={appUi.focusedId}
+		markerId={focusedId}
 		submitting={markerViewSubmitting}
 		error={markerViewError}
 		onCreate={submitMarkerView}

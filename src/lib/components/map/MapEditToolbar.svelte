@@ -32,7 +32,7 @@
 		targetTable?: string | null;
 		/** When true, drawing needs an active level filter. */
 		needsLevel?: boolean;
-		/** Current level id from URL/appUi. */
+		/** Current level id from the map URL filter. */
 		levelId?: string | null;
 		/** Focused feature can receive vertex edit (move/add/remove; update + drawable geom). */
 		canModifyFocused?: boolean;
